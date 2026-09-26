@@ -9,6 +9,7 @@ import {
   StatusBar,
 } from 'react-native';
 import { MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
 import { colors } from '../../constants/colors';
 import { typography } from '../../constants/typography';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
@@ -16,6 +17,7 @@ import { PondCard } from '../../components/pond/PondCard';
 import { selectPond, toggleAeratorMode } from '../../store/slices/pondSlice';
 
 export const DashboardScreen: React.FC = () => {
+  const navigation = useNavigation<any>();
   const dispatch = useAppDispatch();
   const {
     clusterName,
@@ -129,7 +131,10 @@ export const DashboardScreen: React.FC = () => {
             <PondCard
               key={pond.id}
               item={pond}
-              onPress={() => dispatch(selectPond(pond.id))}
+              onPress={() => {
+                dispatch(selectPond(pond.id));
+                navigation.navigate('Ponds');
+              }}
             />
           ))}
         </View>
