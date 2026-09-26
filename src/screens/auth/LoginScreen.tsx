@@ -8,29 +8,44 @@ import {
   ScrollView,
   SafeAreaView,
   StatusBar,
+  ActivityIndicator,
 } from 'react-native';
 import { MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors } from '../../constants/colors';
 import { typography } from '../../constants/typography';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
-import { setRememberDevice, setUserPhone, loginSuccess } from '../../store/slices/authSlice';
+import { setRememberDevice, setUserPhone, loginThunk, clearAuthError } from '../../store/slices/authSlice';
 
 export const LoginScreen: React.FC = () => {
   const dispatch = useAppDispatch();
-  const { userPhone, rememberDevice } = useAppSelector((state) => state.auth);
+  const { userPhone, rememberDevice, isLoading, error } = useAppSelector((state) => state.auth);
 
-  const [phone, setPhone] = useState(userPhone || '0987654321');
-  const [password, setPassword] = useState('••••••••••••');
+  const [phone, setPhone] = useState(userPhone || '');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [localError, setLocalError] = useState<string | null>(null);
 
-  const handleSignIn = () => {
-    setIsLoggingIn(true);
-    dispatch(setUserPhone(phone));
-    setTimeout(() => {
-      setIsLoggingIn(false);
-      dispatch(loginSuccess());
-    }, 600);
+  const handleSignIn = async () => {
+    setLocalError(null);
+    dispatch(clearAuthError());
+
+    const cleanPhone = phone.trim();
+    if (!cleanPhone) {
+      setLocalError('Vui lòng nhập số điện thoại hệ thống');
+      return;
+    }
+
+    if (!password) {
+      setLocalError('Vui lòng nhập mật khẩu truy cập');
+      return;
+    }
+
+    await dispatch(
+      loginThunk({
+        phoneNumber: cleanPhone,
+        password,
+      })
+    );
   };
 
   return (
@@ -72,6 +87,13 @@ export const LoginScreen: React.FC = () => {
 
             {/* Sign In Form Body */}
             <View style={styles.formBody}>
+              {(localError || error) && (
+                <View style={styles.errorBanner}>
+                  <MaterialIcons name="error-outline" size={18} color={colors.error} />
+                  <Text style={styles.errorText}>{localError || error}</Text>
+                </View>
+              )}
+
               {/* Field: Phone Number */}
               <View style={styles.fieldContainer}>
                 <View style={styles.labelRow}>
@@ -95,6 +117,7 @@ export const LoginScreen: React.FC = () => {
                     placeholder="Ví dụ: 0912345678"
                     placeholderTextColor={colors.outline}
                     keyboardType="phone-pad"
+                    autoCapitalize="none"
                   />
                 </View>
               </View>
@@ -152,15 +175,19 @@ export const LoginScreen: React.FC = () => {
 
               {/* Primary Action Button */}
               <TouchableOpacity
-                style={[styles.signInBtn, isLoggingIn && styles.signInBtnDisabled]}
+                style={[styles.signInBtn, isLoading && styles.signInBtnDisabled]}
                 onPress={handleSignIn}
                 activeOpacity={0.9}
-                disabled={isLoggingIn}
+                disabled={isLoading}
               >
-                <Text style={styles.signInBtnText}>
-                  {isLoggingIn ? 'Đang kết nối Nút SCADA...' : 'Đăng nhập Trung tâm Telemetry'}
-                </Text>
-                <MaterialIcons name="arrow-forward" size={18} color={colors.onPrimary} />
+                {isLoading ? (
+                  <ActivityIndicator size="small" color={colors.onPrimary} />
+                ) : (
+                  <>
+                    <Text style={styles.signInBtnText}>Đăng nhập Trung tâm Telemetry</Text>
+                    <MaterialIcons name="arrow-forward" size={18} color={colors.onPrimary} />
+                  </>
+                )}
               </TouchableOpacity>
 
               {/* Industrial Quick Auth Helpers */}
@@ -187,7 +214,7 @@ export const LoginScreen: React.FC = () => {
               style={styles.securityIcon}
             />
             <Text style={styles.securityText}>
-              Quyền truy cập công nghiệp hạn chế cho kỹ sư trại giống, đầm tôm và trung tâm điều coordination. Mọi truy cập không hợp lệ đều được ghi nhận bởi SCADA Gateway #4.
+              Quyền truy cập công nghiệp hạn chế cho kỹ sư trại giống, đầm tôm và trung tâm điều phối. Mọi truy cập không hợp lệ đều được ghi nhận bởi SCADA Gateway #4.
             </Text>
           </View>
 
@@ -317,6 +344,21 @@ const styles = StyleSheet.create({
     padding: 16,
     gap: 14,
     backgroundColor: colors.surfaceContainerLowest,
+  },
+  errorBanner: {
+    backgroundColor: '#FEE2E2',
+    borderColor: '#FCA5A5',
+    borderWidth: 1,
+    borderRadius: 6,
+    padding: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  errorText: {
+    ...typography.bodySm,
+    color: '#B91C1C',
+    flex: 1,
   },
   fieldContainer: {
     gap: 6,
