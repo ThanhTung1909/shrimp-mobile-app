@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   StyleSheet,
   Text,
@@ -7,6 +7,7 @@ import {
   ScrollView,
   SafeAreaView,
   StatusBar,
+  ActivityIndicator,
 } from 'react-native';
 import { MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -21,7 +22,13 @@ import {
   pingHardware,
   acknowledgeHardware,
   setDiagnosticStatus,
+  fetchPondDetail,
+  fetchPonds,
+  fetchLatestTelemetry,
+  refreshRealtimeTelemetry,
 } from '../../store/slices/pondSlice';
+
+import { usePondSubscription } from '../../utils/usePondSubscription';
 
 export const PondDetailScreen: React.FC = () => {
   const navigation = useNavigation<any>();
@@ -42,13 +49,34 @@ export const PondDetailScreen: React.FC = () => {
   const selectedPond =
     ponds.find((p) => p.id === selectedPondId) || ponds[0];
 
+  // Khởi tạo WebSocket room subscription cho đầm tôm được chọn
+  const { isSubscribed } = usePondSubscription(selectedPond?.id);
+
+  useEffect(() => {
+    if (selectedPondId) {
+      dispatch(fetchPondDetail(selectedPondId));
+    }
+  }, [dispatch, selectedPondId]);
+
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const handleRefresh = () => {
+  const handleRefresh = async () => {
     setIsRefreshing(true);
-    setTimeout(() => {
-      setIsRefreshing(false);
-    }, 800);
+    try {
+      await dispatch(fetchPonds()).unwrap();
+      if (selectedPond?.deviceId) {
+        await dispatch(fetchLatestTelemetry(selectedPond.deviceId)).unwrap();
+      } else if (selectedPondId) {
+        await dispatch(fetchPondDetail(selectedPondId)).unwrap();
+      }
+    } catch {
+      // Ignorable fallback
+    } finally {
+      dispatch(refreshRealtimeTelemetry());
+      setTimeout(() => {
+        setIsRefreshing(false);
+      }, 400);
+    }
   };
 
   const handleRunDiagnostic = () => {
@@ -122,11 +150,16 @@ export const PondDetailScreen: React.FC = () => {
 
             <View style={styles.contextActions}>
               <TouchableOpacity
-                style={[styles.smallActionBtn, isRefreshing && styles.rotating]}
+                style={styles.smallActionBtn}
                 activeOpacity={0.7}
                 onPress={handleRefresh}
+                disabled={isRefreshing}
               >
-                <MaterialIcons name="sync" size={18} color={colors.primary} />
+                {isRefreshing ? (
+                  <ActivityIndicator size="small" color={colors.primary} />
+                ) : (
+                  <MaterialIcons name="sync" size={18} color={colors.primary} />
+                )}
               </TouchableOpacity>
               <TouchableOpacity style={styles.smallActionBtn} activeOpacity={0.7}>
                 <MaterialIcons name="more-vert" size={18} color={colors.primary} />

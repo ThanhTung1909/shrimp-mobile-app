@@ -39,6 +39,29 @@ export const apiClient = axios.create({
   },
 });
 
+export function unwrapApiResponse<T>(responseData: any): T {
+  if (responseData === null || responseData === undefined) {
+    return responseData as T;
+  }
+
+  let curr = responseData;
+  while (curr !== null && curr !== undefined && typeof curr === 'object') {
+    // Trường hợp Paginated response có chứa data dạng mảng và metadata phân trang
+    if ('data' in curr && Array.isArray(curr.data) && ('total' in curr || 'totalPages' in curr)) {
+      return curr as T;
+    }
+
+    // Nếu object có property 'data' là object hoặc mảng, unwrap 1 tầng
+    if ('data' in curr && curr.data !== undefined && curr.data !== null && typeof curr.data === 'object') {
+      curr = curr.data;
+    } else {
+      break;
+    }
+  }
+
+  return curr as T;
+}
+
 let isRefreshing = false;
 let failedQueue: Array<{
   resolve: (value?: unknown) => void;
@@ -69,7 +92,8 @@ apiClient.interceptors.request.use(
   async (config: InternalAxiosRequestConfig) => {
     const token = await getAccessToken();
     if (token && config.headers) {
-      config.headers.Authorization = `Bearer ${token}`;
+      const cleanToken = token.replace(/^Bearer\s+/i, '').trim();
+      config.headers.Authorization = `Bearer ${cleanToken}`;
     }
     return config;
   },

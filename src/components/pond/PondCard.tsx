@@ -25,38 +25,29 @@ export const PondCard: React.FC<PondCardProps> = ({ item, onPress }) => {
       <View style={[styles.leftStrip, { backgroundColor: stripColor }]} />
 
       <View style={styles.cardContent}>
-        {/* Main Line: Identity + Badges + Quick Indicator */}
+        {/* Main Line: Identity (Left) & Status Badge + Arrow (Right) */}
         <View style={styles.headerRow}>
-          <View style={styles.identityGroup}>
-            <Text style={styles.nameVi}>{item.nameVi}</Text>
-            <Text style={styles.nameEn}>{item.nameEn}</Text>
+          <Text style={styles.nameVi}>{item.nameVi}</Text>
 
-            {/* Status badge */}
+          <View style={styles.rightGroup}>
+            {/* Status badge: CẢNH BÁO | AO TRỐNG | ĐANG NUÔI */}
             {isAlert ? (
               <View style={styles.alertStatusBadge}>
                 <View style={styles.alertDot} />
-                <Text style={styles.alertStatusText}>ALERT</Text>
+                <Text style={styles.alertStatusText}>CẢNH BÁO</Text>
+              </View>
+            ) : item.status === 'EMPTY' || item.status === 'HARVESTED' ? (
+              <View style={styles.emptyStatusBadge}>
+                <View style={styles.emptyDot} />
+                <Text style={styles.emptyStatusText}>AO TRỐNG</Text>
               </View>
             ) : (
               <View style={styles.activeStatusBadge}>
                 <View style={styles.activeDot} />
-                <Text style={styles.activeStatusText}>ACTIVE</Text>
+                <Text style={styles.activeStatusText}>ĐANG NUÔI</Text>
               </View>
             )}
-          </View>
 
-          <View style={styles.healthGroup}>
-            {isAlert ? (
-              <View style={styles.alertHealthBadge}>
-                <MaterialIcons name="warning" size={14} color={colors.onErrorContainer} />
-                <Text style={styles.alertHealthText}>{item.healthStatus}</Text>
-              </View>
-            ) : (
-              <View style={styles.normalHealthBadge}>
-                <MaterialIcons name="check-circle" size={14} color={colors.secondary} />
-                <Text style={styles.normalHealthText}>{item.healthStatus}</Text>
-              </View>
-            )}
             <MaterialIcons name="chevron-right" size={20} color={colors.onSurfaceVariant} />
           </View>
         </View>
@@ -135,6 +126,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
+  rightGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
   identityGroup: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -187,6 +183,46 @@ const styles = StyleSheet.create({
   alertStatusText: {
     ...typography.labelSm,
     color: colors.onTertiaryFixed,
+    fontWeight: '600',
+  },
+  harvestedStatusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: colors.surfaceContainerHigh,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  harvestedDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.tertiary,
+  },
+  harvestedStatusText: {
+    ...typography.labelSm,
+    color: colors.onSurface,
+    fontWeight: '600',
+  },
+  emptyStatusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: colors.surfaceContainerLow,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  emptyDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.outline,
+  },
+  emptyStatusText: {
+    ...typography.labelSm,
+    color: colors.onSurfaceVariant,
     fontWeight: '600',
   },
   healthGroup: {
