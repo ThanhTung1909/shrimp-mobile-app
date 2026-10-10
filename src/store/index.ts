@@ -3,11 +3,14 @@ import authReducer from './slices/authSlice';
 import pondReducer from './slices/pondSlice';
 import userReducer from './slices/userSlice';
 
+import alertReducer from './slices/alertSlice';
+
 export const store = configureStore({
   reducer: {
     auth: authReducer,
     pond: pondReducer,
     user: userReducer,
+    alert: alertReducer,
   },
 });
 

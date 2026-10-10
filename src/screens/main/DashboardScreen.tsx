@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useCallback } from 'react';
 import {
   StyleSheet,
   Text,
@@ -7,6 +7,8 @@ import {
   ScrollView,
   SafeAreaView,
   StatusBar,
+  RefreshControl,
+  ActivityIndicator,
 } from 'react-native';
 import { MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -14,7 +16,9 @@ import { colors } from '../../constants/colors';
 import { typography } from '../../constants/typography';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { PondCard } from '../../components/pond/PondCard';
-import { selectPond, toggleAeratorMode } from '../../store/slices/pondSlice';
+import { selectPond, toggleAeratorMode, fetchPonds, fetchPondDetail } from '../../store/slices/pondSlice';
+
+import { socketService } from '../../services/socketService';
 
 export const DashboardScreen: React.FC = () => {
   const navigation = useNavigation<any>();
@@ -34,7 +38,29 @@ export const DashboardScreen: React.FC = () => {
     aggregateAvgDo,
     sensorsOk,
     totalSensors,
+    loading,
+    refreshing,
+    error,
   } = useAppSelector((state) => state.pond);
+
+  useEffect(() => {
+    dispatch(fetchPonds());
+  }, [dispatch]);
+
+  // Tự động đăng ký WebSocket room cho tất cả các đầm tôm của nông dân
+  useEffect(() => {
+    if (ponds && ponds.length > 0) {
+      ponds.forEach((pond) => {
+        if (pond.id) {
+          socketService.subscribePond(pond.id);
+        }
+      });
+    }
+  }, [ponds]);
+
+  const handleRefresh = useCallback(() => {
+    dispatch(fetchPonds());
+  }, [dispatch]);
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -56,8 +82,16 @@ export const DashboardScreen: React.FC = () => {
         </View>
 
         <View style={styles.topHeaderRight}>
-          <TouchableOpacity style={styles.iconBtn} activeOpacity={0.7}>
-            <MaterialIcons name="search" size={22} color={colors.onPrimary} />
+          <TouchableOpacity
+            style={styles.iconBtn}
+            activeOpacity={0.7}
+            onPress={handleRefresh}
+          >
+            {loading ? (
+              <ActivityIndicator size="small" color={colors.onPrimary} />
+            ) : (
+              <MaterialIcons name="sync" size={22} color={colors.onPrimary} />
+            )}
           </TouchableOpacity>
           <TouchableOpacity style={styles.iconBtn} activeOpacity={0.7}>
             <MaterialIcons name="notifications" size={22} color={colors.onPrimary} />
@@ -69,11 +103,29 @@ export const DashboardScreen: React.FC = () => {
         </View>
       </View>
 
+      {/* Error notification banner if API connection fails */}
+      {error ? (
+        <View style={styles.errorBanner}>
+          <MaterialIcons name="cloud-off" size={16} color={colors.onErrorContainer} />
+          <Text style={styles.errorBannerText}>
+            {error} • Đang hiển thị dữ liệu hoạt động ngoại tuyến
+          </Text>
+        </View>
+      ) : null}
+
       {/* Main Scroll Content */}
       <ScrollView
         style={styles.scrollContainer}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing || loading}
+            onRefresh={handleRefresh}
+            colors={[colors.secondary]}
+            tintColor={colors.secondary}
+          />
+        }
       >
         {/* Farm Cluster Selector Sub-bar */}
         <View style={styles.clusterCard}>
@@ -102,11 +154,11 @@ export const DashboardScreen: React.FC = () => {
               <Text style={styles.connectedNum}>
                 {connectedPonds}/{totalPonds}
               </Text>
-              <Text style={styles.connectedLabel}>Ponds Connected</Text>
+              <Text style={styles.connectedLabel}>Ao Kết Nối</Text>
             </View>
             <View style={styles.syncGroup}>
               <MaterialIcons name="sync" size={14} color={colors.onSurfaceVariant} />
-              <Text style={styles.syncText}>Live Sync: {lastSyncTime}</Text>
+              <Text style={styles.syncText}>Đồng bộ: {lastSyncTime}</Text>
             </View>
           </View>
         </View>
@@ -114,29 +166,40 @@ export const DashboardScreen: React.FC = () => {
         {/* Filter & Quick Action Strip */}
         <View style={styles.filterStrip}>
           <View style={styles.matrixLabelRow}>
-            <Text style={styles.matrixLabel}>POND TELEMETRY MATRIX</Text>
+            <Text style={styles.matrixLabel}>MA TRẬN GIÁM SÁT AO NUÔI</Text>
             <View style={styles.unitsBadge}>
-              <Text style={styles.unitsBadgeText}>{totalPonds} Units</Text>
+              <Text style={styles.unitsBadgeText}>{totalPonds} Ao</Text>
             </View>
           </View>
           <TouchableOpacity style={styles.filterBtn} activeOpacity={0.7}>
             <MaterialIcons name="filter-list" size={16} color={colors.onSurfaceVariant} />
-            <Text style={styles.filterBtnText}>Density</Text>
+            <Text style={styles.filterBtnText}>Mật độ</Text>
           </TouchableOpacity>
         </View>
 
         {/* Pond Telemetry Card List */}
         <View style={styles.pondList}>
-          {ponds.map((pond) => (
-            <PondCard
-              key={pond.id}
-              item={pond}
-              onPress={() => {
-                dispatch(selectPond(pond.id));
-                navigation.navigate('Ponds');
-              }}
-            />
-          ))}
+          {ponds.length > 0 ? (
+            ponds.map((pond) => (
+              <PondCard
+                key={pond.id}
+                item={pond}
+                onPress={() => {
+                  dispatch(selectPond(pond.id));
+                  dispatch(fetchPondDetail(pond.id));
+                  navigation.navigate('Ponds');
+                }}
+              />
+            ))
+          ) : (
+            <View style={styles.emptyCard}>
+              <MaterialIcons name="water-damage" size={32} color={colors.onSurfaceVariant} />
+              <Text style={styles.emptyTitle}>Chưa có dữ liệu ao nuôi trong Database</Text>
+              <Text style={styles.emptySub}>
+                Kéo xuống để làm mới hoặc kiểm tra tài khoản phân công trên máy chủ.
+              </Text>
+            </View>
+          )}
         </View>
 
         {/* Operational Context Panel (Aerator Grid & Biomass Status) */}
@@ -144,9 +207,9 @@ export const DashboardScreen: React.FC = () => {
           {/* Card 1: Aerator Grid */}
           <View style={styles.contextCard}>
             <View style={styles.contextCardHeader}>
-              <Text style={styles.contextLabel}>AERATOR GRID</Text>
+              <Text style={styles.contextLabel}>HỆ THỐNG SỤC KHÍ</Text>
               <Text style={styles.aeratorStatus}>
-                {aeratorsOn}/{totalAerators} ON
+                {aeratorsOn}/{totalAerators} BẬT
               </Text>
             </View>
             <View style={styles.contextActionsRow}>
@@ -158,7 +221,7 @@ export const DashboardScreen: React.FC = () => {
                 <Text style={styles.autoHighText}>{aeratorMode}</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.specsBtn} activeOpacity={0.7}>
-                <Text style={styles.specsText}>Specs</Text>
+                <Text style={styles.specsText}>Thông số</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -166,8 +229,8 @@ export const DashboardScreen: React.FC = () => {
           {/* Card 2: Biomass Status */}
           <View style={styles.contextCard}>
             <View style={styles.contextCardHeader}>
-              <Text style={styles.contextLabel}>BIOMASS STATUS</Text>
-              <Text style={styles.biomassValue}>{biomassTons} Tons</Text>
+              <Text style={styles.contextLabel}>SINH KHỐI DỰ KIẾN</Text>
+              <Text style={styles.biomassValue}>{biomassTons} Tấn</Text>
             </View>
             <View style={styles.progressRow}>
               <View style={styles.progressBarBg}>
@@ -175,7 +238,7 @@ export const DashboardScreen: React.FC = () => {
                   style={[styles.progressBarFill, { width: `${biomassCapPercent}%` }]}
                 />
               </View>
-              <Text style={styles.progressLabel}>{biomassCapPercent}% cap</Text>
+              <Text style={styles.progressLabel}>{biomassCapPercent}% tải</Text>
             </View>
           </View>
         </View>
@@ -185,14 +248,14 @@ export const DashboardScreen: React.FC = () => {
           <View style={styles.aggregateHeader}>
             <View style={styles.aggregateTitleRow}>
               <MaterialIcons name="query-stats" size={18} color={colors.secondaryFixedDim} />
-              <Text style={styles.aggregateTitle}>Daily Aggregate</Text>
+              <Text style={styles.aggregateTitle}>Tổng Quan Trong Ngày</Text>
             </View>
-            <Text style={styles.updatedText}>Updated Real-Time</Text>
+            <Text style={styles.updatedText}>Real-Time Telemetry</Text>
           </View>
 
           <View style={styles.aggregateGrid}>
             <View style={styles.aggregateTile}>
-              <Text style={styles.aggregateTileLabel}>TOTAL FEED</Text>
+              <Text style={styles.aggregateTileLabel}>TỔNG THỨC ĂN</Text>
               <View style={styles.aggregateTileValueRow}>
                 <Text style={styles.aggregateTileValue}>{aggregateTotalFeedKg}</Text>
                 <Text style={styles.aggregateTileUnit}>kg</Text>
@@ -200,7 +263,7 @@ export const DashboardScreen: React.FC = () => {
             </View>
 
             <View style={styles.aggregateTile}>
-              <Text style={styles.aggregateTileLabel}>AVG DO</Text>
+              <Text style={styles.aggregateTileLabel}>DO TRUNG BÌNH</Text>
               <View style={styles.aggregateTileValueRow}>
                 <Text style={[styles.aggregateTileValue, styles.tealValue]}>
                   {aggregateAvgDo}
@@ -210,7 +273,7 @@ export const DashboardScreen: React.FC = () => {
             </View>
 
             <View style={styles.aggregateTile}>
-              <Text style={styles.aggregateTileLabel}>SENSORS</Text>
+              <Text style={styles.aggregateTileLabel}>CẢM BIẾN</Text>
               <View style={styles.aggregateTileValueRow}>
                 <Text style={styles.aggregateTileValue}>
                   {sensorsOk}/{totalSensors}
@@ -294,6 +357,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginLeft: 4,
+  },
+  errorBanner: {
+    backgroundColor: colors.errorContainer,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  errorBannerText: {
+    ...typography.labelSm,
+    color: colors.onErrorContainer,
+    fontSize: 11,
+    flex: 1,
   },
   scrollContainer: {
     flex: 1,
@@ -565,5 +642,27 @@ const styles = StyleSheet.create({
     color: colors.secondaryFixed,
     fontSize: 10,
     fontWeight: '700',
+  },
+  emptyCard: {
+    backgroundColor: colors.surfaceContainerLowest,
+    borderRadius: 12,
+    padding: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: colors.outlineVariant,
+    borderStyle: 'dashed',
+  },
+  emptyTitle: {
+    ...typography.headlineSm,
+    color: colors.onSurface,
+    textAlign: 'center',
+  },
+  emptySub: {
+    ...typography.bodySm,
+    color: colors.onSurfaceVariant,
+    textAlign: 'center',
+    fontSize: 12,
   },
 });
