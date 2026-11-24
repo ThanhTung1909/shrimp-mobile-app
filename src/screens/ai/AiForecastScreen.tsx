@@ -45,6 +45,26 @@ function riskMeta(level?: RiskLevel) {
   }
 }
 
+function toPercentScore(raw?: number | null): number {
+  const num = Number(raw ?? 0);
+  if (!Number.isFinite(num) || num <= 0) return 0;
+  const pct = num <= 1 ? num * 100 : num;
+  return Math.max(0, Math.min(100, Math.round(pct)));
+}
+
+function formatMetricStat(val: number | null | undefined, decimals: number, unit: string): string {
+  if (val === null || val === undefined || isNaN(Number(val))) return '--';
+  const formatted = Number(val).toFixed(decimals).replace('.', ',');
+  return unit === 'pH' ? formatted : `${formatted} ${unit}`;
+}
+
+function formatClock(iso?: string | null): string {
+  if (!iso) return '--';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '--';
+  return d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+}
+
 export const AiForecastScreen: React.FC = () => {
   const dispatch = useAppDispatch();
   const { fs } = useFontScale();
@@ -240,24 +260,19 @@ export const AiForecastScreen: React.FC = () => {
                   <View style={styles.riskTopRow}>
                     <StatusDot tone={wqRiskStyle.dot} label={`Mức rủi ro: ${wqRiskStyle.label}`} />
                     <Text style={[styles.riskScoreBig, { color: wqRiskStyle.ink }]}>
-                      {Math.round(wq.riskScore)}/100
+                      {toPercentScore(wq.riskScore)}/100
                     </Text>
                   </View>
                   <Text style={[styles.riskMetaLine, { fontSize: fs(12) }]}>
                     Đỉnh rủi ro dự kiến: +{wq.summary?.peakRiskOffsetHours ?? 0}h (
-                    {wq.summary?.peakRiskTime
-                      ? new Date(wq.summary.peakRiskTime).toLocaleTimeString('vi-VN', {
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })
-                      : '--'}
-                    ) · DO TB {Number(wq.summary?.avgDO ?? 0).toFixed(1).replace('.', ',')} mg/L
+                    {formatClock(wq.summary?.peakRiskTime)}) · DO TB{' '}
+                    {Number(wq.summary?.avgDO ?? 0).toFixed(1).replace('.', ',')} mg/L
                   </Text>
-                  {wq.isFallback ? (
-                    <Text style={styles.fallbackTag}>
-                      Nguồn: Mô hình dự phòng cục bộ từ chuỗi đo gần nhất
-                    </Text>
-                  ) : null}
+                  <Text style={styles.sourceLine}>
+                    {wq.isFallback
+                      ? `Nguồn: Mô hình dự phòng cục bộ · Cập nhật ${formatClock(wq.generatedAt)}`
+                      : `Nguồn: AI Live (${wq.cached ? 'Bộ nhớ đệm' : 'Mới tính'}) · Cập nhật ${formatClock(wq.generatedAt)}`}
+                  </Text>
                 </View>
 
                 <View style={styles.metricRow}>
@@ -309,21 +324,29 @@ export const AiForecastScreen: React.FC = () => {
                     <View style={styles.summaryCell}>
                       <Text style={styles.summaryLabel}>Thấp nhất</Text>
                       <Text style={styles.summaryVal}>
-                        {waterMetric === 'do'
-                          ? wq.summary.minDO
-                          : waterMetric === 'ph'
-                          ? wq.summary.minPH
-                          : wq.summary.minTemperature}
+                        {formatMetricStat(
+                          waterMetric === 'do'
+                            ? wq.summary.minDO
+                            : waterMetric === 'ph'
+                            ? wq.summary.minPH
+                            : wq.summary.minTemperature,
+                          chartConfig.decimals,
+                          chartConfig.unit
+                        )}
                       </Text>
                     </View>
                     <View style={styles.summaryCell}>
                       <Text style={styles.summaryLabel}>Cao nhất</Text>
                       <Text style={styles.summaryVal}>
-                        {waterMetric === 'do'
-                          ? wq.summary.maxDO
-                          : waterMetric === 'ph'
-                          ? wq.summary.maxPH
-                          : wq.summary.maxTemperature}
+                        {formatMetricStat(
+                          waterMetric === 'do'
+                            ? wq.summary.maxDO
+                            : waterMetric === 'ph'
+                            ? wq.summary.maxPH
+                            : wq.summary.maxTemperature,
+                          chartConfig.decimals,
+                          chartConfig.unit
+                        )}
                       </Text>
                     </View>
                     <View style={styles.summaryCell}>
@@ -338,7 +361,12 @@ export const AiForecastScreen: React.FC = () => {
                     <Text style={[styles.cardHeading, { fontSize: fs(15) }]}>Yếu tố ảnh hưởng</Text>
                     {wq.factors.map((f, idx) => (
                       <View key={idx} style={styles.bulletRow}>
-                        <MaterialIcons name="circle" size={7} color={colors.warnDot} />
+                        <MaterialIcons
+                          name="circle"
+                          size={7}
+                          color={colors.warnDot}
+                          style={{ marginTop: 6 }}
+                        />
                         <Text style={[styles.bulletText, { fontSize: fs(13) }]}>{f}</Text>
                       </View>
                     ))}
@@ -355,7 +383,12 @@ export const AiForecastScreen: React.FC = () => {
                     </View>
                     {wq.recommendations.map((r, idx) => (
                       <View key={idx} style={styles.bulletRow}>
-                        <MaterialIcons name="check-circle" size={16} color={colors.primary} />
+                        <MaterialIcons
+                          name="check-circle"
+                          size={16}
+                          color={colors.primary}
+                          style={{ marginTop: 2 }}
+                        />
                         <Text style={[styles.bulletText, { fontSize: fs(13) }]}>{r}</Text>
                       </View>
                     ))}
@@ -397,7 +430,7 @@ export const AiForecastScreen: React.FC = () => {
                       label={`Nguy cơ tổng thể: ${drRiskStyle.label}`}
                     />
                     <Text style={[styles.riskScoreBig, { color: drRiskStyle.ink }]}>
-                      {Math.round(dr.overallRiskScore)}%
+                      {toPercentScore(dr.overallRiskScore)}%
                     </Text>
                   </View>
                   <Text style={[styles.riskMetaLine, { fontSize: fs(12) }]}>
@@ -406,10 +439,9 @@ export const AiForecastScreen: React.FC = () => {
                     dr.inputSnapshot?.daysOfCulture !== undefined
                       ? ` · DOC ${dr.inputSnapshot.daysOfCulture}`
                       : ''}
-                    {` · Đánh giá lúc ${new Date(dr.assessedAt).toLocaleTimeString('vi-VN', {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}`}
+                    {` · Đánh giá lúc ${formatClock(dr.assessedAt)} · ${
+                      dr.isFallback ? 'Mô hình dự phòng' : 'AI Live'
+                    }`}
                   </Text>
                 </View>
 
@@ -436,7 +468,7 @@ export const AiForecastScreen: React.FC = () => {
 
                 {dr.diseases.map((d) => {
                   const meta = riskMeta(d.riskLevel);
-                  const pct = Math.max(0, Math.min(100, Math.round(d.riskScore)));
+                  const pct = toPercentScore(d.riskScore);
                   return (
                     <DaylightCard
                       key={d.diseaseCode}
@@ -451,11 +483,13 @@ export const AiForecastScreen: React.FC = () => {
                       style={{ gap: 10 }}
                     >
                       <View style={styles.diseaseHead}>
-                        <View style={{ flex: 1 }}>
+                        <View style={{ flex: 1, gap: 2 }}>
                           <Text style={[styles.diseaseName, { fontSize: fs(16) }]}>
                             {d.diseaseName}
                           </Text>
-                          <Text style={styles.diseaseCode}>{d.diseaseCode}</Text>
+                          <Text style={[styles.diseaseLevelSub, { color: meta.ink }]}>
+                            Mức nguy cơ: {meta.label}
+                          </Text>
                         </View>
                         <View style={styles.diseaseScoreWrap}>
                           <StatusDot tone={meta.dot} size={9} />
@@ -477,7 +511,12 @@ export const AiForecastScreen: React.FC = () => {
                           <Text style={styles.innerBoxTitle}>DẤU HIỆU / YẾU TỐ THÚC ĐẨY</Text>
                           {d.indicators.map((ind, idx) => (
                             <View key={idx} style={styles.bulletRow}>
-                              <MaterialIcons name="circle" size={6} color={meta.ink} />
+                              <MaterialIcons
+                                name="circle"
+                                size={6}
+                                color={meta.ink}
+                                style={{ marginTop: 6 }}
+                              />
                               <Text style={[styles.bulletText, { fontSize: fs(12) }]}>{ind}</Text>
                             </View>
                           ))}
@@ -485,11 +524,21 @@ export const AiForecastScreen: React.FC = () => {
                       ) : null}
 
                       {d.recommendations?.length > 0 ? (
-                        <View style={styles.recInlineBox}>
-                          <MaterialIcons name="verified" size={16} color={colors.primary} />
-                          <Text style={[styles.recInlineText, { fontSize: fs(13) }]}>
-                            {d.recommendations.join(' • ')}
-                          </Text>
+                        <View style={styles.recListBox}>
+                          <Text style={styles.recListTitle}>KHUYẾN NGHỊ XỬ LÝ</Text>
+                          {d.recommendations.map((rec, idx) => (
+                            <View key={idx} style={styles.bulletRow}>
+                              <MaterialIcons
+                                name="check-circle"
+                                size={15}
+                                color={colors.primary}
+                                style={{ marginTop: 2 }}
+                              />
+                              <Text style={[styles.recInlineText, { fontSize: fs(13) }]}>
+                                {rec}
+                              </Text>
+                            </View>
+                          ))}
                         </View>
                       ) : null}
                     </DaylightCard>
@@ -670,10 +719,11 @@ const styles = StyleSheet.create({
     color: colors.ink,
     fontVariant: ['tabular-nums'],
   },
-  fallbackTag: {
+  sourceLine: {
     fontFamily: fontFamily.regular,
     fontSize: 11,
     color: colors.muted,
+    fontVariant: ['tabular-nums'],
   },
   metricRow: {
     flexDirection: 'row',
@@ -743,7 +793,7 @@ const styles = StyleSheet.create({
   },
   bulletRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 8,
   },
   bulletText: {
@@ -791,10 +841,9 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.bold,
     color: colors.ink,
   },
-  diseaseCode: {
-    fontFamily: fontFamily.regular,
+  diseaseLevelSub: {
+    fontFamily: fontFamily.semiBold,
     fontSize: 12,
-    color: colors.muted,
   },
   diseaseScoreWrap: {
     flexDirection: 'row',
@@ -830,13 +879,17 @@ const styles = StyleSheet.create({
     color: colors.muted,
     letterSpacing: 0.3,
   },
-  recInlineBox: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
+  recListBox: {
     backgroundColor: colors.primarySoft,
     borderRadius: radii.control,
     padding: 10,
+    gap: 6,
+  },
+  recListTitle: {
+    fontFamily: fontFamily.bold,
+    fontSize: 11,
+    color: colors.primaryDark,
+    letterSpacing: 0.3,
   },
   recInlineText: {
     flex: 1,
