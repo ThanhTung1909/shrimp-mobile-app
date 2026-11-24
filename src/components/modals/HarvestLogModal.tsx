@@ -16,6 +16,7 @@ import { createHarvestThunk } from '../../store/slices/cropSlice';
 import { showToast } from '../../store/slices/uiSlice';
 import {
   BottomSheetModal,
+  CalendarDatePicker,
   PrimaryButton,
   StatusDot,
   WetHandStepper,
@@ -153,17 +154,15 @@ export const HarvestLogModal: React.FC<HarvestLogModalProps> = ({
       ) : null}
 
       <View style={styles.field}>
-        <Text style={[styles.fieldLabel, { fontSize: fs(12) }]}>NGÀY THU TỈA (YYYY-MM-DD)</Text>
-        <View style={styles.dateBox}>
-          <TextInput
-            value={harvestDate}
-            onChangeText={setHarvestDate}
-            placeholder="2026-11-23"
-            placeholderTextColor={colors.subtle}
-            style={[styles.dateInput, { fontSize: fs(15) }]}
-          />
-          <MaterialIcons name="calendar-today" size={18} color={colors.primary} />
-        </View>
+        <Text style={[styles.fieldLabel, { fontSize: fs(12) }]}>NGÀY THU TỈA</Text>
+        <CalendarDatePicker
+          value={harvestDate}
+          onChange={setHarvestDate}
+          minDate={stockingYmd || undefined}
+          maxDate={getTodayYmd()}
+          showQuickShortcuts={true}
+          placeholder="Chọn ngày thu tỉa"
+        />
       </View>
 
       <View style={styles.field}>
@@ -263,23 +262,6 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.bold,
     color: colors.muted,
     letterSpacing: 0.4,
-  },
-  dateBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    minHeight: touchTargets.min,
-    borderRadius: radii.control,
-    borderWidth: 1,
-    borderColor: colors.borderStrong,
-    backgroundColor: colors.surfaceContainerLow,
-    paddingHorizontal: 14,
-    gap: 8,
-  },
-  dateInput: {
-    flex: 1,
-    fontFamily: fontFamily.bold,
-    color: colors.ink,
-    fontVariant: ['tabular-nums'],
   },
   quickAddRow: {
     flexDirection: 'row',

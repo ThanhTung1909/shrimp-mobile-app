@@ -34,7 +34,8 @@ export const WetHandStepper: React.FC<WetHandStepperProps> = ({
     return Math.round(clamped * factor) / factor;
   };
 
-  const formatValue = (num: number) => String(Number(num.toFixed(decimals)));
+  const formatValue = (num: number) =>
+    decimals >= 2 ? num.toFixed(decimals) : String(Number(num.toFixed(decimals)));
 
   const [focused, setFocused] = useState(false);
   const [draftText, setDraftText] = useState(() => formatValue(value));
@@ -166,7 +167,6 @@ const styles = StyleSheet.create({
   valueBox: {
     flex: 1,
     minWidth: 0,
-    overflow: 'hidden',
     height: touchTargets.stepper,
     borderRadius: radii.control,
     backgroundColor: colors.surfaceContainerLow,
@@ -174,21 +174,22 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 8,
+    paddingHorizontal: 10,
     gap: 4,
   },
   valueInput: {
+    flex: 1,
+    minWidth: 0,
+    height: '100%',
     fontFamily: fontFamily.bold,
     fontSize: 19,
     color: colors.ink,
     fontVariant: ['tabular-nums'],
     textAlign: 'center',
-    minWidth: 32,
-    flexShrink: 1,
-    paddingVertical: 4,
+    paddingVertical: 0,
   },
   unit: {
+    flexShrink: 0,
     fontFamily: fontFamily.medium,
     fontSize: 13,
     color: colors.muted,

@@ -16,7 +16,20 @@ import { Gender } from '../../services/authApi';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { fetchProfileThunk, updateProfileThunk } from '../../store/slices/userSlice';
 import { showToast } from '../../store/slices/uiSlice';
-import { DaylightCard, PrimaryButton, useFontScale } from '../../components/ui';
+import {
+  CalendarDatePicker,
+  DaylightCard,
+  PrimaryButton,
+  useFontScale,
+} from '../../components/ui';
+
+function getTodayYmd(): string {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
 
 interface ProfileScreenProps {
   onBack?: () => void;
@@ -158,13 +171,13 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ onBack }) => {
           </View>
 
           <View style={styles.field}>
-            <Text style={styles.label}>Ngày sinh (YYYY-MM-DD)</Text>
-            <TextInput
+            <Text style={styles.label}>Ngày sinh</Text>
+            <CalendarDatePicker
               value={dateOfBirth}
-              onChangeText={setDateOfBirth}
-              placeholder="1990-05-20"
-              placeholderTextColor={colors.subtle}
-              style={[styles.input, { fontSize: fs(15) }]}
+              onChange={setDateOfBirth}
+              minDate="1930-01-01"
+              maxDate={getTodayYmd()}
+              placeholder="Chọn ngày sinh"
             />
           </View>
 
