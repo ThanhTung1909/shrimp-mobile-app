@@ -10,6 +10,7 @@ import {
   clearRememberPhone,
 } from '../../utils/secureStore';
 import { setUserProfile, clearUserProfile } from './userSlice';
+import { clearAlerts } from './alertSlice';
 
 interface AuthState {
   isAuthenticated: boolean;
@@ -35,12 +36,10 @@ const initialState: AuthState = {
   role: null,
 };
 
-// Khôi phục phiên làm việc khi ứng dụng vừa mở
 export const bootstrapAuthThunk = createAsyncThunk(
   'auth/bootstrap',
   async (_, { dispatch, rejectWithValue }) => {
     try {
-      // Đọc SĐT đã ghi nhớ nếu có
       const rememberedPhone = await getRememberPhone();
       if (rememberedPhone) {
         dispatch(setUserPhone(rememberedPhone));
@@ -51,7 +50,6 @@ export const bootstrapAuthThunk = createAsyncThunk(
         return null;
       }
 
-      // Kiểm tra phiên đăng nhập bằng API me
       const meData = await authApi.getMe();
       dispatch(setUserProfile(meData));
       return meData;
@@ -63,17 +61,13 @@ export const bootstrapAuthThunk = createAsyncThunk(
   }
 );
 
-// Thunk thực hiện Đăng nhập
 export const loginThunk = createAsyncThunk(
   'auth/login',
   async (dto: LoginDto, { dispatch, getState, rejectWithValue }) => {
     try {
       const response = await authApi.login(dto);
-
-      // Lưu Token vào SecureStore
       await saveTokens(response.accessToken, response.refreshToken);
 
-      // Lưu/Xóa SĐT ghi nhớ tùy thuộc tùy chọn rememberDevice
       const state = (getState() as any).auth as AuthState;
       if (state.rememberDevice) {
         await saveRememberPhone(dto.phoneNumber);
@@ -81,7 +75,6 @@ export const loginThunk = createAsyncThunk(
         await clearRememberPhone();
       }
 
-      // Cập nhật Profile vào UserSlice
       dispatch(
         setUserProfile({
           userId: response.userId,
@@ -90,6 +83,14 @@ export const loginThunk = createAsyncThunk(
           role: response.role,
         })
       );
+
+      // Fetch full user profile (email, gender, dateOfBirth)
+      try {
+        const me = await authApi.getMe();
+        dispatch(setUserProfile(me));
+      } catch {
+        // Basic profile already set from login response
+      }
 
       return response;
     } catch (err: any) {
@@ -100,31 +101,39 @@ export const loginThunk = createAsyncThunk(
   }
 );
 
-// Thunk thực hiện Đăng xuất
-export const logoutThunk = createAsyncThunk(
-  'auth/logout',
-  async (_, { dispatch }) => {
-    try {
-      const refreshToken = await getRefreshToken();
-      if (refreshToken) {
-        await authApi.logout(refreshToken);
-      }
-    } catch (err) {
-      console.warn('Lỗi khi thu hồi refresh token trên server:', err);
-    } finally {
-      await clearTokens();
-      dispatch(clearUserProfile());
+export const logoutThunk = createAsyncThunk('auth/logout', async (_, { dispatch }) => {
+  try {
+    const refreshToken = await getRefreshToken();
+    if (refreshToken) {
+      await authApi.logout(refreshToken);
     }
+  } catch (err) {
+    console.warn('Lỗi khi thu hồi refresh token trên server:', err);
+  } finally {
+    await clearTokens();
+    dispatch(clearUserProfile());
+    dispatch(clearAlerts());
   }
-);
+});
 
-// Thunk thực hiện Đổi mật khẩu
+export const logoutAllThunk = createAsyncThunk('auth/logoutAll', async (_, { dispatch }) => {
+  try {
+    await authApi.logoutAll();
+  } catch (err) {
+    console.warn('Lỗi khi đăng xuất tất cả thiết bị:', err);
+  } finally {
+    await clearTokens();
+    dispatch(clearUserProfile());
+    dispatch(clearAlerts());
+  }
+});
+
 export const changePasswordThunk = createAsyncThunk(
   'auth/changePassword',
   async (dto: ChangePasswordDto, { rejectWithValue }) => {
     try {
-      const response = await authApi.changePassword(dto);
-      // Lưu Token mới sau khi đổi mật khẩu
+      const refreshToken = dto.refreshToken || (await getRefreshToken()) || undefined;
+      const response = await authApi.changePassword({ ...dto, refreshToken });
       await saveTokens(response.accessToken, response.refreshToken);
       return response;
     } catch (err: any) {
@@ -148,7 +157,6 @@ export const authSlice = createSlice({
     },
   },
   extraReducers: (builder) => {
-    // bootstrapAuthThunk
     builder.addCase(bootstrapAuthThunk.pending, (state) => {
       state.isBootstrapping = true;
     });
@@ -167,7 +175,6 @@ export const authSlice = createSlice({
       state.isAuthenticated = false;
     });
 
-    // loginThunk
     builder.addCase(loginThunk.pending, (state) => {
       state.isLoading = true;
       state.error = null;
@@ -184,14 +191,18 @@ export const authSlice = createSlice({
       state.error = action.payload as string;
     });
 
-    // logoutThunk
     builder.addCase(logoutThunk.fulfilled, (state) => {
       state.isAuthenticated = false;
       state.role = null;
       state.mustChangePassword = false;
     });
 
-    // changePasswordThunk
+    builder.addCase(logoutAllThunk.fulfilled, (state) => {
+      state.isAuthenticated = false;
+      state.role = null;
+      state.mustChangePassword = false;
+    });
+
     builder.addCase(changePasswordThunk.pending, (state) => {
       state.isLoading = true;
       state.error = null;

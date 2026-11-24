@@ -6,6 +6,8 @@ export interface TelemetryDataBackend {
   recorded_at?: string;
   deviceId?: string;
   device_id?: string;
+  pondId?: string;
+  pond_id?: string;
   temperature?: number | string | null;
   temp?: number | string | null;
   ph?: number | string | null;
@@ -31,11 +33,6 @@ export interface QueryTelemetryParams {
   endDate?: string;
 }
 
-export interface TelemetryLatestApiResponse {
-  success: boolean;
-  data: TelemetryDataBackend;
-}
-
 export interface TelemetryHistoryApiResponse {
   success: boolean;
   total: number;
@@ -45,17 +42,11 @@ export interface TelemetryHistoryApiResponse {
 }
 
 export const telemetryApi = {
-  /**
-   * Lấy bản ghi đo đạc thời gian thực mới nhất của 1 thiết bị
-   */
   getLatestTelemetry: async (deviceId: string): Promise<TelemetryDataBackend> => {
     const response = await apiClient.get<any>(`/telemetry/device/${deviceId}/latest`);
     return unwrapApiResponse<TelemetryDataBackend>(response.data);
   },
 
-  /**
-   * Lấy lịch sử chỉ số đo đạc của 1 thiết bị
-   */
   getTelemetryHistory: async (
     deviceId: string,
     query?: QueryTelemetryParams
@@ -63,12 +54,28 @@ export const telemetryApi = {
     const response = await apiClient.get<any>(`/telemetry/device/${deviceId}/history`, {
       params: query,
     });
-    const payload = response.data;
-    if (payload && Array.isArray(payload.data)) {
-      return payload;
+    const raw = response.data;
+    const unwrapped = unwrapApiResponse<any>(raw);
+    if (Array.isArray(unwrapped)) {
+      return { success: true, total: unwrapped.length, page: 1, limit: 100, data: unwrapped };
     }
-    if (Array.isArray(payload)) {
-      return { success: true, total: payload.length, page: 1, limit: 100, data: payload };
+    if (unwrapped && Array.isArray(unwrapped.data)) {
+      return {
+        success: true,
+        total: typeof unwrapped.total === 'number' ? unwrapped.total : unwrapped.data.length,
+        page: typeof unwrapped.page === 'number' ? unwrapped.page : 1,
+        limit: typeof unwrapped.limit === 'number' ? unwrapped.limit : 100,
+        data: unwrapped.data,
+      };
+    }
+    if (raw && Array.isArray(raw.data)) {
+      return {
+        success: true,
+        total: typeof raw.total === 'number' ? raw.total : raw.data.length,
+        page: raw.page || 1,
+        limit: raw.limit || 100,
+        data: raw.data,
+      };
     }
     return { success: true, total: 0, page: 1, limit: 100, data: [] };
   },

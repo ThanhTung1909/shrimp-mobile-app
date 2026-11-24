@@ -1,10 +1,11 @@
 import { io, Socket } from 'socket.io-client';
 import axios from 'axios';
-import { DEFAULT_BASE_URL } from './apiClient';
+import { DEFAULT_BASE_URL, unwrapApiResponse } from './apiClient';
 import { getAccessToken, getRefreshToken, saveTokens } from '../utils/secureStore';
-import { AppDispatch } from '../store';
+import type { AppDispatch, RootState } from '../store';
 import { updateRealtimeTelemetry } from '../store/slices/pondSlice';
-import { addEmergencyAlert } from '../store/slices/alertSlice';
+import { addEmergencyAlert, fetchAlertsThunk } from '../store/slices/alertSlice';
+import { setSocketConnected } from '../store/slices/uiSlice';
 
 const getWebSocketUrl = (): string => {
   let url = DEFAULT_BASE_URL;
@@ -19,27 +20,25 @@ const getWebSocketUrl = (): string => {
 class SocketService {
   private socket: Socket | null = null;
   private dispatch: AppDispatch | null = null;
-  private subscribedPondIds: Set<string> = new Set();
-  private isRefreshing: boolean = false;
-  private refreshAttempts: number = 0;
+  private getState: (() => RootState) | null = null;
+  private subscribedPondCounts: Map<string, number> = new Map();
+  private isRefreshing = false;
+  private refreshAttempts = 0;
 
-  /**
-   * Đăng ký Redux dispatch handler
-   */
   public setDispatch(dispatch: AppDispatch) {
     this.dispatch = dispatch;
   }
 
-  /**
-   * Khởi tạo và mở kết nối WebSocket Gateway theo chuẩn Unified Contract
-   */
+  public setStore(dispatch: AppDispatch, getState: () => RootState) {
+    this.dispatch = dispatch;
+    this.getState = getState;
+  }
+
   public async connect(): Promise<void> {
     if (this.socket && this.socket.connected) {
-      console.log('🟢 [WebSocket] Socket đã kết nối sẵn.');
       return;
     }
 
-    // Nếu socket đang tồn tại ở trạng thái đóng, dọn dẹp trước khi tạo mới
     if (this.socket) {
       this.socket.disconnect();
       this.socket = null;
@@ -47,14 +46,10 @@ class SocketService {
 
     const token = await getAccessToken();
     if (!token) {
-      console.log('⚠️ [WebSocket] Không tìm thấy Access Token. Bỏ qua kết nối socket.');
       return;
     }
 
     const wsUrl = getWebSocketUrl();
-    console.log(`🔌 [WebSocket] Đang khởi tạo kết nối tới: ${wsUrl}`);
-
-    // Truyền trực tiếp chuỗi accessToken thuần (không chứa tiền tố Bearer) theo chuẩn Unified Contract
     const accessToken = token.replace(/^Bearer\s+/i, '').trim();
 
     this.socket = io(wsUrl, {
@@ -70,57 +65,83 @@ class SocketService {
     this.setupEventListeners();
   }
 
-  /**
-   * Thiết lập các event listener
-   */
   private setupEventListeners() {
     if (!this.socket) return;
 
     this.socket.on('connect', () => {
-      console.log('🟢 [WebSocket] Kết nối thành công tới Gateway Telemetry:', this.socket?.id);
       this.refreshAttempts = 0;
       this.isRefreshing = false;
-
-      // Re-subscribe tất cả các phòng đầm tôm đang theo dõi
+      this.dispatch?.(setSocketConnected(true));
       this.resubscribeAll();
     });
 
-    this.socket.on('disconnect', (reason) => {
-      console.log('🔴 [WebSocket] Ngắt kết nối. Lý do:', reason);
+    this.socket.on('disconnect', () => {
+      this.dispatch?.(setSocketConnected(false));
     });
 
     this.socket.on('connect_error', async (err: any) => {
-      console.warn('⚠️ [WebSocket Connection Error]:', err?.message || err);
+      this.dispatch?.(setSocketConnected(false));
       await this.handleAuthError(err);
     });
 
     this.socket.on('error', async (err: any) => {
-      console.warn('⚠️ [WebSocket Error Event]:', err?.message || err);
       await this.handleAuthError(err);
     });
 
-    // Lắng nghe dữ liệu cảm biến mới
     this.socket.on('telemetry:new', (payload: any) => {
-      console.log('📊 [Realtime Telemetry Received]:', payload);
       const data = payload?.data || payload?.telemetry || payload;
       if (this.dispatch && data) {
         this.dispatch(updateRealtimeTelemetry(data));
       }
     });
 
-    // Lắng nghe cảnh báo khẩn cấp
     this.socket.on('alert:triggered', (payload: any) => {
-      console.log('🚨 [Realtime Alert Triggered]:', payload);
-      const alert = payload?.data || payload?.alert || payload;
-      if (this.dispatch && alert) {
-        this.dispatch(addEmergencyAlert(alert));
-      }
+      const rawAlert = payload?.data || payload?.alert || payload;
+      if (!this.dispatch || !rawAlert) return;
+
+      const pondId = rawAlert.pondId || rawAlert.pond_id;
+      const matchedPond =
+        pondId && this.getState
+          ? this.getState().pond.ponds.find((p) => p.id === pondId)
+          : undefined;
+
+      const resolvedPondName =
+        rawAlert.pondName ||
+        rawAlert.pond?.pondName ||
+        matchedPond?.name ||
+        undefined;
+
+      const metricName = rawAlert.metricName || rawAlert.metric;
+      const triggeredValue = rawAlert.triggeredValue ?? rawAlert.value;
+      const alertLevel = rawAlert.alertLevel || rawAlert.severity || 'CRITICAL';
+
+      this.dispatch(
+        addEmergencyAlert({
+          id: rawAlert.alertId || rawAlert.id,
+          alertId: rawAlert.alertId || rawAlert.id,
+          pondId,
+          pondName: resolvedPondName,
+          title:
+            alertLevel === 'CRITICAL'
+              ? 'CẢNH BÁO KHẨN CẤP'
+              : 'CẢNH BÁO NGƯỠNG AN TOÀN',
+          message:
+            rawAlert.message ||
+            'Phát hiện chỉ số môi trường nước vượt ngưỡng an toàn!',
+          severity: alertLevel,
+          metric: metricName,
+          value: typeof triggeredValue === 'number' ? triggeredValue : Number(triggeredValue),
+          threshold: rawAlert.threshold,
+          timestamp: rawAlert.createdAt || rawAlert.timestamp || new Date().toISOString(),
+          actionSuggestion: rawAlert.recommendation?.actionSuggestion,
+        })
+      );
+
+      // Refresh REST alert list so AlertCenterScreen stays synchronized
+      this.dispatch(fetchAlertsThunk());
     });
   }
 
-  /**
-   * Tự động xử lý Refresh Token khi Token bị lỗi xác thực / hết hạn trên Socket
-   */
   private async handleAuthError(err: any): Promise<void> {
     const errorMsg = String(err?.message || err).toLowerCase();
     const isAuthError =
@@ -134,7 +155,6 @@ class SocketService {
     if (isAuthError && !this.isRefreshing && this.refreshAttempts < 2) {
       this.isRefreshing = true;
       this.refreshAttempts++;
-      console.log(`🔄 [WebSocket] Lỗi JWT (${errorMsg}). Thử refresh token cho socket lần ${this.refreshAttempts}...`);
 
       try {
         const refreshToken = await getRefreshToken();
@@ -142,95 +162,86 @@ class SocketService {
           throw new Error('No refresh token available');
         }
 
-        const refreshResponse = await axios.post<{ accessToken: string; refreshToken: string }>(
+        const refreshResponse = await axios.post<any>(
           `${DEFAULT_BASE_URL}/auth/refresh`,
           { refreshToken }
         );
 
-        const { accessToken: newAccessToken, refreshToken: newRefreshToken } = refreshResponse.data;
+        const refreshPayload = unwrapApiResponse<{ accessToken: string; refreshToken: string }>(
+          refreshResponse.data
+        );
+        const newAccessToken = refreshPayload?.accessToken;
+        const newRefreshToken = refreshPayload?.refreshToken;
+        if (!newAccessToken) {
+          throw new Error('Missing access token in refresh response');
+        }
+
         await saveTokens(newAccessToken, newRefreshToken);
 
         const cleanNewAccessToken = newAccessToken.replace(/^Bearer\s+/i, '').trim();
 
         if (this.socket) {
-          this.socket.auth = {
-            token: cleanNewAccessToken,
-          };
-          console.log('✅ [WebSocket] Refresh Token thành công. Kết nối lại socket...');
+          this.socket.auth = { token: cleanNewAccessToken };
           this.socket.connect();
         }
-      } catch (refreshErr) {
-        console.warn('⚠️ [WebSocket] Refresh token socket thất bại, tạm ngừng socket (giữ nguyên session REST API):', refreshErr);
+      } catch {
         this.disconnect();
       } finally {
         this.isRefreshing = false;
       }
     } else if (isAuthError) {
-      console.warn('⚠️ [WebSocket] Đã thử refresh socket nhưng thất bại. Tạm đóng kết nối socket.');
       this.disconnect();
     }
   }
 
-  /**
-   * Tham gia theo dõi 1 đầm tôm
-   */
-  public subscribePond(pondId: string, ackCallback?: (response: { status: string; message?: string }) => void): void {
+  public subscribePond(
+    pondId: string,
+    ackCallback?: (response: { status: string; message?: string }) => void
+  ): void {
     if (!pondId) return;
-    this.subscribedPondIds.add(pondId);
+    const prevCount = this.subscribedPondCounts.get(pondId) || 0;
+    this.subscribedPondCounts.set(pondId, prevCount + 1);
 
     if (this.socket && this.socket.connected) {
-      console.log(`📡 [WebSocket] Gửi yêu cầu subscribe_pond: ${pondId}`);
-      this.socket.emit('subscribe_pond', { pondId }, (ack: any) => {
-        console.log(`📩 [WebSocket] Subscribe Pond (${pondId}) Ack:`, ack);
-        if (ackCallback) {
-          ackCallback(ack);
-        }
-      });
-    } else {
-      console.log(`⏳ [WebSocket] Socket chưa kết nối. Đã thêm ${pondId} vào hàng đợi re-subscribe.`);
+      if (prevCount === 0 || ackCallback) {
+        this.socket.emit('subscribe_pond', { pondId }, (ack: any) => {
+          if (ackCallback) ackCallback(ack);
+        });
+      }
     }
   }
 
-  /**
-   * Rời khỏi phòng theo dõi đầm tôm
-   */
   public unsubscribePond(pondId: string): void {
     if (!pondId) return;
-    this.subscribedPondIds.delete(pondId);
-
-    if (this.socket && this.socket.connected) {
-      console.log(`📡 [WebSocket] Gửi yêu cầu unsubscribe_pond: ${pondId}`);
-      this.socket.emit('unsubscribe_pond', { pondId });
+    const prevCount = this.subscribedPondCounts.get(pondId) || 0;
+    if (prevCount <= 1) {
+      this.subscribedPondCounts.delete(pondId);
+      if (this.socket && this.socket.connected) {
+        this.socket.emit('unsubscribe_pond', { pondId });
+      }
+    } else {
+      this.subscribedPondCounts.set(pondId, prevCount - 1);
     }
   }
 
-  /**
-   * Re-subscribe tất cả các đầm tôm đang trong danh sách theo dõi
-   */
   public resubscribeAll(): void {
     if (!this.socket || !this.socket.connected) return;
-    this.subscribedPondIds.forEach((pondId) => {
-      console.log(`🔄 [WebSocket] Re-subscribing pond: ${pondId}`);
-      this.socket?.emit('subscribe_pond', { pondId }, (ack: any) => {
-        console.log(`📩 [WebSocket] Re-subscribe Pond (${pondId}) Ack:`, ack);
-      });
+    this.subscribedPondCounts.forEach((_count, pondId) => {
+      this.socket?.emit('subscribe_pond', { pondId });
     });
   }
 
-  /**
-   * Ngắt kết nối socket
-   */
-  public disconnect(): void {
+  public disconnect(clearSubscriptions = true): void {
+    if (clearSubscriptions) {
+      this.subscribedPondCounts.clear();
+    }
     if (this.socket) {
-      console.log('🚪 [WebSocket] Đóng kết nối socket.');
       this.socket.disconnect();
       this.socket = null;
     }
+    this.dispatch?.(setSocketConnected(false));
   }
 
-  /**
-   * Trạng thái kết nối
-   */
   public isConnected(): boolean {
     return !!(this.socket && this.socket.connected);
   }
