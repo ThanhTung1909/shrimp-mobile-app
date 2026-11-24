@@ -7,7 +7,12 @@ import { fontFamily } from '../../constants/typography';
 import { authApi, Role } from '../../services/authApi';
 import { useAppDispatch } from '../../store/hooks';
 import { showToast } from '../../store/slices/uiSlice';
-import { BottomSheetModal, PrimaryButton, useFontScale } from '../ui';
+import { BottomSheetModal, OtpCodeInput, PrimaryButton, useFontScale } from '../ui';
+import {
+  sanitizePhoneInput,
+  VN_PHONE_ERROR_MSG,
+  VN_PHONE_REGEX,
+} from '../../utils/validation';
 
 export interface OtpForgotModalProps {
   visible: boolean;
@@ -78,8 +83,8 @@ export const OtpForgotModal: React.FC<OtpForgotModalProps> = ({
   const handleSendStep1 = async () => {
     setErrorMsg(null);
     if (mode === 'forgot') {
-      if (channel === 'phone' && !/^[0-9]{10,11}$/.test(phoneNumber.trim())) {
-        setErrorMsg('Số điện thoại phải gồm 10–11 chữ số.');
+      if (channel === 'phone' && !VN_PHONE_REGEX.test(phoneNumber.trim())) {
+        setErrorMsg(VN_PHONE_ERROR_MSG);
         return;
       }
       if (channel === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
@@ -109,8 +114,8 @@ export const OtpForgotModal: React.FC<OtpForgotModalProps> = ({
       setErrorMsg('Vui lòng nhập họ và tên.');
       return;
     }
-    if (!/^[0-9]{10,11}$/.test(phoneNumber.trim())) {
-      setErrorMsg('Số điện thoại phải gồm 10–11 chữ số.');
+    if (!VN_PHONE_REGEX.test(phoneNumber.trim())) {
+      setErrorMsg(VN_PHONE_ERROR_MSG);
       return;
     }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
@@ -313,10 +318,11 @@ export const OtpForgotModal: React.FC<OtpForgotModalProps> = ({
               <Text style={styles.label}>Số điện thoại đăng ký</Text>
               <TextInput
                 value={phoneNumber}
-                onChangeText={setPhoneNumber}
+                onChangeText={(txt) => setPhoneNumber(sanitizePhoneInput(txt))}
                 placeholder="Ví dụ: 0908123456"
                 placeholderTextColor={colors.subtle}
                 keyboardType="phone-pad"
+                maxLength={10}
                 style={[styles.input, { fontSize: fs(15) }]}
               />
             </View>
@@ -360,10 +366,11 @@ export const OtpForgotModal: React.FC<OtpForgotModalProps> = ({
             <Text style={styles.label}>Số điện thoại</Text>
             <TextInput
               value={phoneNumber}
-              onChangeText={setPhoneNumber}
+              onChangeText={(txt) => setPhoneNumber(sanitizePhoneInput(txt))}
               placeholder="0908123456"
               placeholderTextColor={colors.subtle}
               keyboardType="phone-pad"
+              maxLength={10}
               style={[styles.input, { fontSize: fs(15) }]}
             />
           </View>
@@ -419,34 +426,7 @@ export const OtpForgotModal: React.FC<OtpForgotModalProps> = ({
             </View>
           ) : null}
 
-          <View style={styles.otpVisualRow}>
-            {[0, 1, 2, 3, 4, 5].map((i) => {
-              const char = otp[i] || '';
-              const isFocusedSlot = i === otp.length && otp.length < 6;
-              return (
-                <View
-                  key={i}
-                  style={[
-                    styles.otpSlot,
-                    char ? styles.otpSlotFilled : null,
-                    isFocusedSlot ? styles.otpSlotActive : null,
-                  ]}
-                >
-                  <Text style={styles.otpChar}>{char || '•'}</Text>
-                </View>
-              );
-            })}
-          </View>
-
-          <TextInput
-            value={otp}
-            onChangeText={(txt) => setOtp(txt.replace(/\D/g, '').slice(0, 6))}
-            placeholder="Nhập 6 chữ số OTP"
-            placeholderTextColor={colors.subtle}
-            keyboardType="number-pad"
-            maxLength={6}
-            style={[styles.input, styles.otpInputField]}
-          />
+          <OtpCodeInput value={otp} onChange={setOtp} disabled={loading} />
 
           <View style={styles.otpMetaRow}>
             <TouchableOpacity disabled={countdown > 0} onPress={handleResendOtp}>
@@ -667,41 +647,6 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.bold,
     fontSize: 13,
     color: colors.primaryDark,
-    fontVariant: ['tabular-nums'],
-  },
-  otpVisualRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  otpSlot: {
-    flex: 1,
-    height: 52,
-    borderRadius: radii.control,
-    borderWidth: 1.5,
-    borderColor: colors.border,
-    backgroundColor: colors.surfaceContainerLow,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  otpSlotFilled: {
-    borderColor: colors.primary,
-    backgroundColor: colors.card,
-  },
-  otpSlotActive: {
-    borderColor: colors.primary,
-    borderWidth: 2,
-  },
-  otpChar: {
-    fontFamily: fontFamily.bold,
-    fontSize: 20,
-    color: colors.ink,
-    fontVariant: ['tabular-nums'],
-  },
-  otpInputField: {
-    textAlign: 'center',
-    letterSpacing: 6,
-    fontFamily: fontFamily.bold,
     fontVariant: ['tabular-nums'],
   },
   otpMetaRow: {

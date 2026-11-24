@@ -7,4 +7,5 @@ export { CenterDialogModal } from './CenterDialogModal';
 export { AquaToggleSwitch } from './AquaToggleSwitch';
 export { WetHandStepper } from './WetHandStepper';
 export { LineChartSvg, type LineChartPoint } from './LineChartSvg';
+export { OtpCodeInput, type OtpCodeInputProps } from './OtpCodeInput';
 export { useFontScale } from './useFontScale';

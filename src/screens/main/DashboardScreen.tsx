@@ -76,10 +76,15 @@ export const DashboardScreen: React.FC = () => {
     const attentionCount = farmScopedPonds.filter(
       (p) => p.status === 'WARNING' || p.status === 'CRITICAL'
     ).length;
+    const emptyCount = farmScopedPonds.filter(
+      (p) => p.status === 'EMPTY' || p.status === 'OFFLINE'
+    ).length;
     const onlineDevices = devices.filter((d) => d.status === 'ONLINE').length;
     return {
+      allCount: farmScopedPonds.length,
       safeCount,
       attentionCount,
+      emptyCount,
       alertCount: activeAlerts.length > 0 ? activeAlerts.length : unreadAlertCount,
       onlineDevices,
       totalDevices: devices.length,
@@ -218,29 +223,6 @@ export const DashboardScreen: React.FC = () => {
           </TouchableOpacity>
         )}
 
-        <View style={styles.summaryRow}>
-          <View style={[styles.statPill, { backgroundColor: '#EAF8EF', borderColor: '#B7E4C7' }]}>
-            <StatusDot tone="safe" size={8} />
-            <Text style={[styles.statText, { color: colors.safeText, fontSize: fs(12) }]}>
-              {stats.safeCount} Ổn định
-            </Text>
-          </View>
-          <View style={[styles.statPill, { backgroundColor: colors.warnBg, borderColor: '#FCD34D' }]}>
-            <StatusDot tone="warning" size={8} />
-            <Text style={[styles.statText, { color: colors.warnText, fontSize: fs(12) }]}>
-              {stats.attentionCount} Cần chú ý
-            </Text>
-          </View>
-          <View
-            style={[styles.statPill, { backgroundColor: colors.dangerBg, borderColor: '#FCA5A5' }]}
-          >
-            <MaterialIcons name="sensors" size={14} color={colors.primaryDark} />
-            <Text style={[styles.statText, { color: colors.ink, fontSize: fs(12) }]}>
-              {stats.onlineDevices}/{stats.totalDevices} Trạm
-            </Text>
-          </View>
-        </View>
-
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -248,10 +230,14 @@ export const DashboardScreen: React.FC = () => {
         >
           {(
             [
-              { key: 'ALL', label: 'Tất cả' },
-              { key: 'ATTENTION', label: 'Cần chú ý' },
-              { key: 'SAFE', label: 'Ổn định' },
-              { key: 'EMPTY', label: 'Ao trống' },
+              { key: 'ALL', label: `Tất cả (${stats.allCount})`, dotColor: null },
+              {
+                key: 'ATTENTION',
+                label: `Cần chú ý (${stats.attentionCount})`,
+                dotColor: colors.warnDot,
+              },
+              { key: 'SAFE', label: `Ổn định (${stats.safeCount})`, dotColor: colors.safeDot },
+              { key: 'EMPTY', label: `Ao trống (${stats.emptyCount})`, dotColor: colors.offlineDot },
             ] as const
           ).map((chip) => {
             const active = filterMode === chip.key;
@@ -262,6 +248,16 @@ export const DashboardScreen: React.FC = () => {
                 onPress={() => setFilterMode(chip.key)}
                 style={[styles.filterChip, active && styles.filterChipActive]}
               >
+                {chip.dotColor ? (
+                  <View
+                    style={[
+                      styles.chipDot,
+                      {
+                        backgroundColor: active ? 'rgba(255,255,255,0.92)' : chip.dotColor,
+                      },
+                    ]}
+                  />
+                ) : null}
                 <Text
                   style={[
                     styles.filterChipText,
@@ -278,9 +274,34 @@ export const DashboardScreen: React.FC = () => {
 
         <View style={styles.sectionHeader}>
           <Text style={[styles.sectionTitle, { fontSize: fs(13) }]}>DANH SÁCH AO NUÔI</Text>
-          <Text style={[styles.sectionCount, { fontSize: fs(12) }]}>
-            {filteredPonds.length} ao
-          </Text>
+          <View style={styles.sectionMetaRow}>
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={() => navigation.navigate('Devices')}
+              style={[
+                styles.stationPill,
+                stats.onlineDevices === 0 && styles.stationPillWarn,
+              ]}
+            >
+              <MaterialIcons
+                name="sensors"
+                size={13}
+                color={stats.onlineDevices > 0 ? colors.primaryDark : colors.warnText}
+              />
+              <Text
+                style={[
+                  styles.stationPillText,
+                  { fontSize: fs(11) },
+                  stats.onlineDevices === 0 && { color: colors.warnText },
+                ]}
+              >
+                {stats.onlineDevices}/{stats.totalDevices} trạm
+              </Text>
+            </TouchableOpacity>
+            <Text style={[styles.sectionCount, { fontSize: fs(12) }]}>
+              {filteredPonds.length} ao
+            </Text>
+          </View>
         </View>
 
         {error ? (
@@ -486,33 +507,16 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.bold,
     color: colors.dangerText,
   },
-  summaryRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 12,
-  },
-  statPill: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 5,
-    paddingVertical: 9,
-    paddingHorizontal: 8,
-    borderRadius: radii.pill,
-    borderWidth: 1,
-  },
-  statText: {
-    fontFamily: fontFamily.semiBold,
-    fontVariant: ['tabular-nums'],
-  },
   filterRow: {
     gap: 8,
-    marginTop: 14,
+    marginTop: 12,
     paddingBottom: 2,
   },
   filterChip: {
-    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 13,
     paddingVertical: 8,
     minHeight: 38,
     borderRadius: radii.pill,
@@ -521,6 +525,11 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     justifyContent: 'center',
   },
+  chipDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+  },
   filterChipActive: {
     backgroundColor: colors.primary,
     borderColor: colors.primary,
@@ -528,6 +537,7 @@ const styles = StyleSheet.create({
   filterChipText: {
     fontFamily: fontFamily.semiBold,
     color: colors.muted,
+    fontVariant: ['tabular-nums'],
   },
   filterChipTextActive: {
     color: '#FFFFFF',
@@ -538,6 +548,31 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginTop: 16,
     marginBottom: 10,
+  },
+  sectionMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  stationPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: radii.pill,
+    backgroundColor: colors.primarySoft,
+    borderWidth: 1,
+    borderColor: '#B2DCE0',
+  },
+  stationPillWarn: {
+    backgroundColor: colors.warnBg,
+    borderColor: colors.warnBorder,
+  },
+  stationPillText: {
+    fontFamily: fontFamily.semiBold,
+    color: colors.primaryDark,
+    fontVariant: ['tabular-nums'],
   },
   sectionTitle: {
     fontFamily: fontFamily.bold,

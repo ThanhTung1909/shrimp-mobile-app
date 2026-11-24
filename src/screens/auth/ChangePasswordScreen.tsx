@@ -18,7 +18,7 @@ import { authApi } from '../../services/authApi';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { changePasswordThunk, logoutThunk } from '../../store/slices/authSlice';
 import { showToast } from '../../store/slices/uiSlice';
-import { DaylightCard, PrimaryButton, useFontScale } from '../../components/ui';
+import { DaylightCard, OtpCodeInput, PrimaryButton, useFontScale } from '../../components/ui';
 
 export interface ChangePasswordScreenProps {
   isForced?: boolean;
@@ -172,27 +172,19 @@ export const ChangePasswordScreen: React.FC<ChangePasswordScreenProps> = ({
             </View>
 
             <View style={styles.field}>
-              <Text style={styles.label}>Mã OTP xác thực ({phoneNumber || '--'})</Text>
-              <View style={styles.otpRow}>
-                <TextInput
-                  value={otp}
-                  onChangeText={(txt) => setOtp(txt.replace(/\D/g, '').slice(0, 6))}
-                  keyboardType="number-pad"
-                  maxLength={6}
-                  placeholder="6 số OTP"
-                  placeholderTextColor={colors.subtle}
-                  style={[styles.input, styles.otpInput]}
-                />
+              <View style={styles.otpHeaderRow}>
+                <Text style={styles.label}>Mã OTP ({phoneNumber || '--'})</Text>
                 <TouchableOpacity
                   disabled={countdown > 0 || sendingOtp}
                   onPress={handleSendOtp}
                   style={[styles.otpBtn, (countdown > 0 || sendingOtp) && { opacity: 0.55 }]}
                 >
                   <Text style={styles.otpBtnText}>
-                    {sendingOtp ? 'Đang gửi' : countdown > 0 ? `${countdown}s` : 'Gửi mã OTP'}
+                    {sendingOtp ? 'Đang gửi' : countdown > 0 ? `Còn ${countdown}s` : 'Gửi mã OTP'}
                   </Text>
                 </TouchableOpacity>
               </View>
+              <OtpCodeInput value={otp} onChange={setOtp} disabled={isLoading} />
               {devOtpHint ? (
                 <Text style={styles.devOtpHint}>Mã OTP thử nghiệm: {devOtpHint}</Text>
               ) : null}
@@ -292,19 +284,15 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: colors.ink,
   },
-  otpRow: {
+  otpHeaderRow: {
     flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     gap: 8,
   },
-  otpInput: {
-    flex: 1,
-    fontFamily: fontFamily.bold,
-    fontVariant: ['tabular-nums'],
-    letterSpacing: 3,
-  },
   otpBtn: {
-    minHeight: touchTargets.min,
-    paddingHorizontal: 14,
+    minHeight: 36,
+    paddingHorizontal: 12,
     borderRadius: radii.control,
     borderWidth: 1.5,
     borderColor: colors.primary,
@@ -316,6 +304,7 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.bold,
     fontSize: 13,
     color: colors.primaryDark,
+    fontVariant: ['tabular-nums'],
   },
   devOtpHint: {
     fontFamily: fontFamily.bold,

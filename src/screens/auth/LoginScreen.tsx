@@ -23,6 +23,11 @@ import {
 } from '../../store/slices/authSlice';
 import { DaylightCard, PrimaryButton, useFontScale } from '../../components/ui';
 import { OtpForgotModal } from '../../components/modals/OtpForgotModal';
+import {
+  sanitizePhoneInput,
+  VN_PHONE_ERROR_MSG,
+  VN_PHONE_REGEX,
+} from '../../utils/validation';
 
 export const LoginScreen: React.FC = () => {
   const dispatch = useAppDispatch();
@@ -43,8 +48,8 @@ export const LoginScreen: React.FC = () => {
       setLocalError('Vui lòng nhập đầy đủ số điện thoại và mật khẩu.');
       return;
     }
-    if (!/^[0-9]{10,11}$/.test(cleanPhone)) {
-      setLocalError('Số điện thoại không hợp lệ (10–11 chữ số).');
+    if (!VN_PHONE_REGEX.test(cleanPhone)) {
+      setLocalError(VN_PHONE_ERROR_MSG);
       return;
     }
 
@@ -95,10 +100,11 @@ export const LoginScreen: React.FC = () => {
                 <MaterialIcons name="phone" size={20} color={colors.primary} />
                 <TextInput
                   value={userPhone}
-                  onChangeText={(txt) => dispatch(setUserPhone(txt))}
+                  onChangeText={(txt) => dispatch(setUserPhone(sanitizePhoneInput(txt)))}
                   placeholder="0908123456"
                   placeholderTextColor={colors.subtle}
                   keyboardType="phone-pad"
+                  maxLength={10}
                   autoCapitalize="none"
                   style={[styles.input, { fontSize: fs(15) }]}
                 />

@@ -9,6 +9,8 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { MaterialIcons } from '@expo/vector-icons';
 import {
   createNavigationContainerRef,
   NavigationContainer,
@@ -55,6 +57,7 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export const AppNavigator: React.FC = () => {
   const dispatch = useAppDispatch();
+  const insets = useSafeAreaInsets();
   const { isAuthenticated, isBootstrapping, mustChangePassword } = useAppSelector(
     (state) => state.auth
   );
@@ -177,10 +180,12 @@ export const AppNavigator: React.FC = () => {
 
       {toastMessage ? (
         <TouchableOpacity
-          activeOpacity={0.9}
+          activeOpacity={0.92}
           onPress={() => dispatch(clearToast())}
+          accessibilityRole="alert"
           style={[
             styles.toast,
+            { top: Math.max(insets.top + 8, 16) },
             toastMessage.tone === 'danger'
               ? styles.toastDanger
               : toastMessage.tone === 'warning'
@@ -188,7 +193,36 @@ export const AppNavigator: React.FC = () => {
               : styles.toastSafe,
           ]}
         >
-          <Text style={styles.toastText}>{toastMessage.text}</Text>
+          <MaterialIcons
+            name={
+              toastMessage.tone === 'danger'
+                ? 'error-outline'
+                : toastMessage.tone === 'warning'
+                ? 'warning-amber'
+                : 'check-circle'
+            }
+            size={20}
+            color={
+              toastMessage.tone === 'danger'
+                ? '#DC2626'
+                : toastMessage.tone === 'warning'
+                ? '#D97706'
+                : '#059669'
+            }
+          />
+          <Text
+            style={[
+              styles.toastText,
+              toastMessage.tone === 'danger'
+                ? styles.toastTextDanger
+                : toastMessage.tone === 'warning'
+                ? styles.toastTextWarn
+                : styles.toastTextSafe,
+            ]}
+          >
+            {toastMessage.text}
+          </Text>
+          <MaterialIcons name="close" size={18} color={colors.muted} />
         </TouchableOpacity>
       ) : null}
     </View>
@@ -213,29 +247,50 @@ const styles = StyleSheet.create({
   },
   toast: {
     position: 'absolute',
-    bottom: 84,
     left: 16,
     right: 16,
-    maxWidth: 460,
+    maxWidth: 480,
     alignSelf: 'center',
-    borderRadius: 12,
-    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderLeftWidth: 4,
+    paddingHorizontal: 14,
     paddingVertical: 12,
+    zIndex: 9999,
+    elevation: 12,
     ...shadows.floating,
   },
   toastSafe: {
-    backgroundColor: colors.primaryDark,
+    backgroundColor: '#ECFDF5',
+    borderColor: '#A7F3D0',
+    borderLeftColor: '#059669',
   },
   toastWarn: {
-    backgroundColor: colors.warnText,
+    backgroundColor: '#FFFBEB',
+    borderColor: '#FDE68A',
+    borderLeftColor: '#D97706',
   },
   toastDanger: {
-    backgroundColor: colors.dangerText,
+    backgroundColor: '#FEF2F2',
+    borderColor: '#FECACA',
+    borderLeftColor: '#DC2626',
   },
   toastText: {
+    flex: 1,
     fontFamily: fontFamily.semiBold,
     fontSize: 13,
-    color: '#FFFFFF',
-    textAlign: 'center',
+    lineHeight: 18,
+  },
+  toastTextSafe: {
+    color: '#065F46',
+  },
+  toastTextWarn: {
+    color: '#92400E',
+  },
+  toastTextDanger: {
+    color: '#991B1B',
   },
 });

@@ -8,7 +8,7 @@ import { authApi } from '../../services/authApi';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { changePasswordThunk } from '../../store/slices/authSlice';
 import { showToast } from '../../store/slices/uiSlice';
-import { BottomSheetModal, PrimaryButton, useFontScale } from '../ui';
+import { BottomSheetModal, OtpCodeInput, PrimaryButton, useFontScale } from '../ui';
 
 export interface ChangePasswordModalProps {
   visible: boolean;
@@ -207,35 +207,20 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
       <View style={styles.fieldGroup}>
         <View style={styles.otpHeaderRow}>
           <Text style={[styles.label, { fontSize: fs(13) }]}>Mã OTP 6 số xác nhận</Text>
-          {countdown > 0 ? (
-            <View style={styles.timerChip}>
-              <Text style={styles.timerChipText}>Còn {countdown}s</Text>
-            </View>
-          ) : null}
-        </View>
-
-        <View style={styles.otpActionRow}>
-          <TextInput
-            value={otp}
-            onChangeText={(txt) => setOtp(txt.replace(/\D/g, '').slice(0, 6))}
-            keyboardType="number-pad"
-            maxLength={6}
-            placeholder="482910"
-            placeholderTextColor={colors.subtle}
-            style={styles.otpInput}
-          />
           <TouchableOpacity
             activeOpacity={0.8}
             disabled={countdown > 0 || sendingOtp}
             onPress={handleSendOtp}
             style={[styles.sendOtpBtn, (countdown > 0 || sendingOtp) && styles.sendOtpBtnDisabled]}
           >
-            <MaterialIcons name="send" size={16} color={colors.primaryDark} />
+            <MaterialIcons name="send" size={15} color={colors.primaryDark} />
             <Text style={styles.sendOtpText}>
-              {sendingOtp ? 'Đang gửi...' : countdown > 0 ? `${countdown}s` : 'Gửi mã OTP'}
+              {sendingOtp ? 'Đang gửi...' : countdown > 0 ? `Còn ${countdown}s` : 'Gửi mã OTP'}
             </Text>
           </TouchableOpacity>
         </View>
+
+        <OtpCodeInput value={otp} onChange={setOtp} disabled={isLoading} />
 
         <Text style={styles.phoneHint}>Gửi mã xác nhận tới {maskedPhone}</Text>
         {devOtpHint ? (
@@ -318,40 +303,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-  },
-  timerChip: {
-    backgroundColor: colors.primarySoft,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: radii.pill,
-  },
-  timerChipText: {
-    fontFamily: fontFamily.semiBold,
-    fontSize: 11,
-    color: colors.primaryDark,
-    fontVariant: ['tabular-nums'],
-  },
-  otpActionRow: {
-    flexDirection: 'row',
     gap: 8,
   },
-  otpInput: {
-    flex: 1,
-    minHeight: touchTargets.min,
-    borderRadius: radii.control,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surfaceContainerLow,
-    paddingHorizontal: 14,
-    fontFamily: fontFamily.bold,
-    fontSize: 16,
-    color: colors.ink,
-    fontVariant: ['tabular-nums'],
-    letterSpacing: 3,
-  },
   sendOtpBtn: {
-    minHeight: touchTargets.min,
-    paddingHorizontal: 14,
+    minHeight: 36,
+    paddingHorizontal: 12,
     borderRadius: radii.control,
     borderWidth: 1.5,
     borderColor: colors.primary,
@@ -367,6 +323,7 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.semiBold,
     fontSize: 13,
     color: colors.primaryDark,
+    fontVariant: ['tabular-nums'],
   },
   phoneHint: {
     fontFamily: fontFamily.regular,
