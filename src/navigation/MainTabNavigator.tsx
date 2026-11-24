@@ -2,41 +2,48 @@ import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { MaterialIcons } from '@expo/vector-icons';
 import { colors } from '../constants/colors';
-import { typography } from '../constants/typography';
+import { fontFamily } from '../constants/typography';
+import { useAppSelector } from '../store/hooks';
 import { DashboardScreen } from '../screens/main/DashboardScreen';
-import { PondDetailScreen } from '../screens/pond/PondDetailScreen';
-import { DeviceManagerScreen } from '../screens/device/DeviceManagerScreen';
+import { AiForecastScreen } from '../screens/ai/AiForecastScreen';
 import { AlertCenterScreen } from '../screens/alert/AlertCenterScreen';
+import { DeviceManagerScreen } from '../screens/device/DeviceManagerScreen';
 import { SettingsScreen } from '../screens/settings/SettingsScreen';
 
 export type MainTabParamList = {
   Overview: undefined;
-  Ponds: undefined;
-  Analytics: undefined;
+  AiForecast: undefined;
   Alerts: undefined;
-  Settings: undefined;
+  Devices: undefined;
+  Profile: undefined;
 };
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
 export const MainTabNavigator: React.FC = () => {
+  const activeAlertCount = useAppSelector((state) => {
+    const restActive = state.alert.alerts.filter((a) => a.status === 'ACTIVE').length;
+    return restActive > 0 ? restActive : state.alert.unreadAlertCount;
+  });
+
   return (
     <Tab.Navigator
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: colors.secondary,
-        tabBarInactiveTintColor: colors.onSurfaceVariant,
+        tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: colors.muted,
         tabBarStyle: {
-          backgroundColor: colors.surfaceContainerLowest,
-          borderTopColor: colors.outlineVariant,
+          backgroundColor: colors.card,
+          borderTopColor: colors.border,
           borderTopWidth: 1,
-          height: 60,
-          paddingBottom: 8,
+          height: 68,
+          paddingBottom: 10,
           paddingTop: 6,
         },
         tabBarLabelStyle: {
-          ...typography.labelSm,
-          fontSize: 10,
+          fontFamily: fontFamily.semiBold,
+          fontSize: 11,
+          lineHeight: 14,
         },
       }}
     >
@@ -44,29 +51,19 @@ export const MainTabNavigator: React.FC = () => {
         name="Overview"
         component={DashboardScreen}
         options={{
-          tabBarLabel: 'Overview',
-          tabBarIcon: ({ color, size }) => (
-            <MaterialIcons name="dashboard" size={size} color={color} />
-          ),
-        }}
-      />
-      <Tab.Screen
-        name="Ponds"
-        component={PondDetailScreen}
-        options={{
-          tabBarLabel: 'Ponds',
+          tabBarLabel: 'Ao nuôi',
           tabBarIcon: ({ color, size }) => (
             <MaterialIcons name="water" size={size} color={color} />
           ),
         }}
       />
       <Tab.Screen
-        name="Analytics"
-        component={DeviceManagerScreen}
+        name="AiForecast"
+        component={AiForecastScreen}
         options={{
-          tabBarLabel: 'Analytics',
+          tabBarLabel: 'Dự báo AI',
           tabBarIcon: ({ color, size }) => (
-            <MaterialIcons name="analytics" size={size} color={color} />
+            <MaterialIcons name="auto-awesome" size={size} color={color} />
           ),
         }}
       />
@@ -74,19 +71,36 @@ export const MainTabNavigator: React.FC = () => {
         name="Alerts"
         component={AlertCenterScreen}
         options={{
-          tabBarLabel: 'Alerts',
+          tabBarLabel: 'Cảnh báo',
+          tabBarBadge: activeAlertCount > 0 ? activeAlertCount : undefined,
+          tabBarBadgeStyle: {
+            backgroundColor: colors.dangerText,
+            color: '#FFFFFF',
+            fontSize: 10,
+            fontFamily: fontFamily.bold,
+          },
           tabBarIcon: ({ color, size }) => (
-            <MaterialIcons name="warning" size={size} color={color} />
+            <MaterialIcons name="notifications" size={size} color={color} />
           ),
         }}
       />
       <Tab.Screen
-        name="Settings"
+        name="Devices"
+        component={DeviceManagerScreen}
+        options={{
+          tabBarLabel: 'Thiết bị',
+          tabBarIcon: ({ color, size }) => (
+            <MaterialIcons name="sensors" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Profile"
         component={SettingsScreen}
         options={{
-          tabBarLabel: 'Settings',
+          tabBarLabel: 'Cá nhân',
           tabBarIcon: ({ color, size }) => (
-            <MaterialIcons name="settings" size={size} color={color} />
+            <MaterialIcons name="person" size={size} color={color} />
           ),
         }}
       />

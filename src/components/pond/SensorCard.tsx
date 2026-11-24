@@ -1,215 +1,159 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { MaterialCommunityIcons, MaterialIcons } from '@expo/vector-icons';
 import { colors } from '../../constants/colors';
-import { typography } from '../../constants/typography';
-
-export interface SensorData {
-  id: string;
-  name: string;
-  value: number | string;
-  unit: string;
-  standard: string;
-  trendText: string;
-  trendIcon: string;
-  iconName: string;
-  isCommunityIcon?: boolean;
-  percent: number;
-  isError?: boolean;
-  errorTagText?: string;
-}
+import { fontFamily } from '../../constants/typography';
+import { SensorMetric } from '../../store/slices/pondSlice';
+import { DaylightCard, SafeRangeBar, StatusDot, useFontScale } from '../ui';
 
 interface SensorCardProps {
-  sensor: SensorData;
+  sensor: SensorMetric;
 }
 
 export const SensorCard: React.FC<SensorCardProps> = ({ sensor }) => {
-  const isError = sensor.isError;
+  const { fs } = useFontScale();
 
-  const headerLabelColor = isError ? colors.error : colors.onSurfaceVariant;
-  const valueColor = isError ? colors.error : colors.onSurface;
-  const trendColor = isError
-    ? colors.error
-    : sensor.trendText.includes('NTU')
-    ? colors.onTertiaryContainer
-    : colors.secondary;
-  const progressFillColor = isError ? colors.error : colors.secondary;
+  const tone =
+    sensor.severity === 'danger'
+      ? 'danger'
+      : sensor.severity === 'warning'
+      ? 'warning'
+      : 'neutral';
+
+  const dotTone =
+    sensor.severity === 'danger'
+      ? 'danger'
+      : sensor.severity === 'warning'
+      ? 'warning'
+      : sensor.severity === 'offline'
+      ? 'offline'
+      : 'safe';
+
+  const valueColor =
+    sensor.severity === 'danger'
+      ? colors.dangerText
+      : sensor.severity === 'warning'
+      ? colors.warnText
+      : sensor.severity === 'offline'
+      ? colors.muted
+      : colors.ink;
+
+  const formattedVal =
+    sensor.value !== null && sensor.value !== undefined && !isNaN(sensor.value)
+      ? String(sensor.value).replace('.', ',')
+      : '--';
 
   return (
-    <View
-      style={[
-        styles.cardContainer,
-        isError && styles.errorCardBorder,
-      ]}
-    >
-      {/* Top Header Line */}
+    <DaylightCard tone={tone} padding={12} style={styles.card}>
       <View style={styles.headerRow}>
-        <Text style={[styles.sensorName, { color: headerLabelColor }]}>
-          {sensor.name}
-        </Text>
-        <View style={styles.headerRightIcons}>
-          <MaterialIcons
-            name={sensor.trendIcon as any}
-            size={15}
-            color={trendColor}
-          />
+        <View style={styles.titleRow}>
           {sensor.isCommunityIcon ? (
-            <MaterialCommunityIcons
-              name={sensor.iconName as any}
-              size={16}
-              color={isError ? colors.error : colors.secondary}
-            />
+            <MaterialCommunityIcons name={sensor.iconName as any} size={15} color={colors.primary} />
           ) : (
-            <MaterialIcons
-              name={sensor.iconName as any}
-              size={16}
-              color={isError ? colors.error : colors.secondary}
-            />
+            <MaterialIcons name={sensor.iconName as any} size={15} color={colors.primary} />
           )}
+          <Text style={[styles.nameText, { fontSize: fs(12) }]} numberOfLines={1}>
+            {sensor.name}
+          </Text>
         </View>
+        <StatusDot tone={dotTone} size={8} />
       </View>
 
-      {/* Middle Value Section */}
-      <View style={styles.middleSection}>
-        <View style={styles.valueRow}>
-          <Text style={[styles.sensorValue, { color: valueColor }]}>
-            {sensor.value}
-          </Text>
-          <Text style={[styles.sensorUnit, isError && { color: colors.error }]}>
-            {sensor.unit}
-          </Text>
-        </View>
-
-        <View style={styles.subRow}>
-          {isError ? (
-            <View style={styles.errorTag}>
-              <View style={styles.errorDot} />
-              <Text style={styles.errorTagText}>
-                {sensor.errorTagText || 'Cảnh báo thấp'}
-              </Text>
-            </View>
-          ) : (
-            <View style={styles.standardTag}>
-              <Text style={styles.standardTagText}>{sensor.standard}</Text>
-            </View>
-          )}
-          <Text style={[styles.trendText, { color: trendColor }]}>
-            {sensor.trendText}
-          </Text>
-        </View>
-      </View>
-
-      {/* Bottom Progress Bar */}
-      <View style={styles.progressBg}>
-        <View
+      <View style={styles.valueRow}>
+        <Text style={[styles.valueText, { color: valueColor, fontSize: fs(25) }]}>
+          {formattedVal}
+        </Text>
+        <Text
           style={[
-            styles.progressFill,
-            { width: `${sensor.percent}%`, backgroundColor: progressFillColor },
+            styles.unitText,
+            {
+              color:
+                sensor.severity === 'danger'
+                  ? colors.dangerText
+                  : sensor.severity === 'warning'
+                  ? colors.warnText
+                  : colors.muted,
+              fontSize: fs(12),
+            },
           ]}
-        />
+        >
+          {sensor.unit}
+        </Text>
       </View>
-    </View>
+
+      <SafeRangeBar
+        value={sensor.value}
+        minSafe={sensor.minSafe}
+        maxSafe={sensor.maxSafe}
+        scaleMin={sensor.scaleMin}
+        scaleMax={sensor.scaleMax}
+        severity={sensor.severity}
+      />
+
+      <View style={styles.scaleRow}>
+        <Text style={[styles.scaleText, { fontSize: fs(10) }]}>{sensor.scaleMin}</Text>
+        <Text style={[styles.rangeLabel, { fontSize: fs(11) }]} numberOfLines={1}>
+          {sensor.rangeLabel}
+        </Text>
+        <Text style={[styles.scaleText, { fontSize: fs(10) }]}>{sensor.scaleMax}</Text>
+      </View>
+    </DaylightCard>
   );
 };
 
 const styles = StyleSheet.create({
-  cardContainer: {
-    backgroundColor: colors.surfaceContainerLowest,
-    borderRadius: 12,
-    padding: 10,
-    justifyContent: 'space-between',
-    borderWidth: 1,
-    borderColor: colors.outlineVariant,
-    marginBottom: 8,
+  card: {
     flex: 1,
-  },
-  errorCardBorder: {
-    borderColor: 'rgba(186, 26, 26, 0.4)',
-    borderWidth: 1.5,
+    minWidth: 0,
+    justifyContent: 'space-between',
+    gap: 6,
   },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 4,
+    gap: 6,
   },
-  sensorName: {
-    ...typography.labelSm,
-    fontWeight: '500',
-    textTransform: 'uppercase',
-  },
-  headerRightIcons: {
+  titleRow: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 2,
+    gap: 5,
   },
-  middleSection: {
-    marginVertical: 4,
+  nameText: {
+    flex: 1,
+    fontFamily: fontFamily.medium,
+    color: colors.ink,
   },
   valueRow: {
     flexDirection: 'row',
     alignItems: 'baseline',
-    gap: 2,
+    gap: 4,
+    marginTop: 2,
   },
-  sensorValue: {
-    ...typography.telemetryValueLg,
+  valueText: {
+    fontFamily: fontFamily.bold,
+    fontVariant: ['tabular-nums'],
+    lineHeight: 30,
   },
-  sensorUnit: {
-    ...typography.labelMd,
-    color: colors.onSurfaceVariant,
+  unitText: {
+    fontFamily: fontFamily.medium,
   },
-  subRow: {
+  scaleRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: 4,
-  },
-  standardTag: {
-    backgroundColor: colors.surfaceContainer,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  standardTagText: {
-    ...typography.labelSm,
-    fontSize: 10,
-    color: colors.onSurfaceVariant,
-  },
-  errorTag: {
-    flexDirection: 'row',
-    alignItems: 'center',
     gap: 4,
-    backgroundColor: colors.errorContainer,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
   },
-  errorDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: colors.error,
+  scaleText: {
+    fontFamily: fontFamily.regular,
+    color: colors.subtle,
+    fontVariant: ['tabular-nums'],
   },
-  errorTagText: {
-    ...typography.labelSm,
-    fontSize: 10,
-    color: colors.onErrorContainer,
-    fontWeight: '700',
-  },
-  trendText: {
-    ...typography.labelSm,
-    fontSize: 10,
-  },
-  progressBg: {
-    width: '100%',
-    height: 6,
-    backgroundColor: colors.surfaceContainer,
-    borderRadius: 3,
-    overflow: 'hidden',
-    marginTop: 6,
-  },
-  progressFill: {
-    height: '100%',
-    borderRadius: 3,
+  rangeLabel: {
+    fontFamily: fontFamily.medium,
+    color: colors.safeText,
+    textAlign: 'center',
+    flexShrink: 1,
   },
 });

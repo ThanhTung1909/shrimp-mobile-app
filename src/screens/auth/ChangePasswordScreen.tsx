@@ -1,223 +1,219 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
   StyleSheet,
   Text,
-  View,
-  TouchableOpacity,
   TextInput,
-  ScrollView,
-  SafeAreaView,
-  StatusBar,
-  ActivityIndicator,
-  Alert,
+  TouchableOpacity,
+  View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { colors } from '../../constants/colors';
-import { typography } from '../../constants/typography';
+import { radii, touchTargets } from '../../constants/theme';
+import { fontFamily } from '../../constants/typography';
+import { authApi } from '../../services/authApi';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { changePasswordThunk, logoutThunk } from '../../store/slices/authSlice';
+import { showToast } from '../../store/slices/uiSlice';
+import { DaylightCard, PrimaryButton, useFontScale } from '../../components/ui';
 
-interface ChangePasswordScreenProps {
+export interface ChangePasswordScreenProps {
   isForced?: boolean;
-  onSuccess?: () => void;
   onCancel?: () => void;
+  onSuccess?: () => void;
 }
 
 export const ChangePasswordScreen: React.FC<ChangePasswordScreenProps> = ({
-  isForced = false,
-  onSuccess,
+  isForced = true,
   onCancel,
+  onSuccess,
 }) => {
   const dispatch = useAppDispatch();
-  const { isLoading, error } = useAppSelector((state) => state.auth);
+  const { fs } = useFontScale();
+  const phoneNumber = useAppSelector((state) => state.user.phoneNumber || state.auth.userPhone);
+  const { isLoading } = useAppSelector((state) => state.auth);
 
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [otp, setOtp] = useState('');
+  const [countdown, setCountdown] = useState(0);
+  const [sendingOtp, setSendingOtp] = useState(false);
+  const [devOtpHint, setDevOtpHint] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const [showCurrent, setShowCurrent] = useState(false);
-  const [showNew, setShowNew] = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
+  useEffect(() => {
+    if (countdown <= 0) return;
+    const t = setTimeout(() => setCountdown((c) => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [countdown]);
 
-  const [validationError, setValidationError] = useState<string | null>(null);
-
-  const handleChangePassword = async () => {
-    setValidationError(null);
-
-    if (!currentPassword) {
-      setValidationError('Vui lòng nhập mật khẩu hiện tại');
+  const handleSendOtp = async () => {
+    if (!phoneNumber) {
+      setErrorMsg('Không tìm thấy số điện thoại tài khoản.');
       return;
     }
+    setErrorMsg(null);
+    setSendingOtp(true);
+    try {
+      const res = await authApi.sendOtp({
+        phoneNumber,
+        purpose: 'CHANGE_PASSWORD',
+      });
+      setDevOtpHint(res?.otp || null);
+      setCountdown(60);
+    } catch (err: any) {
+      setErrorMsg(err?.response?.data?.message || 'Không thể gửi mã OTP.');
+    } finally {
+      setSendingOtp(false);
+    }
+  };
 
-    if (!newPassword || newPassword.length < 6) {
-      setValidationError('Mật khẩu mới phải có ít nhất 6 ký tự');
+  const handleSubmit = async () => {
+    setErrorMsg(null);
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      setErrorMsg('Vui lòng nhập đầy đủ các trường mật khẩu.');
       return;
     }
-
-    if (newPassword === currentPassword) {
-      setValidationError('Mật khẩu mới không được trùng với mật khẩu hiện tại');
+    if (newPassword.length < 8) {
+      setErrorMsg('Mật khẩu mới phải dài tối thiểu 8 ký tự.');
       return;
     }
-
     if (newPassword !== confirmPassword) {
-      setValidationError('Mật khẩu xác nhận không khớp');
+      setErrorMsg('Mật khẩu xác nhận không trùng khớp.');
+      return;
+    }
+    const cleanOtp = otp.replace(/\D/g, '');
+    if (cleanOtp.length !== 6) {
+      setErrorMsg('Vui lòng nhập đủ 6 chữ số mã OTP xác nhận.');
       return;
     }
 
-    const result = await dispatch(
+    const res = await dispatch(
       changePasswordThunk({
         currentPassword,
         newPassword,
+        otp: cleanOtp,
       })
     );
 
-    if (changePasswordThunk.fulfilled.match(result)) {
-      Alert.alert('Thành công', 'Đổi mật khẩu tài khoản thành công!');
-      if (onSuccess) onSuccess();
+    if (changePasswordThunk.fulfilled.match(res)) {
+      dispatch(showToast({ text: 'Đổi mật khẩu thành công!', tone: 'safe' }));
+      onSuccess?.();
+    } else {
+      setErrorMsg((res.payload as string) || 'Đổi mật khẩu thất bại.');
     }
   };
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="dark-content" backgroundColor={colors.surfaceContainer} />
-      <View style={styles.headerBar}>
-        {!isForced && onCancel ? (
-          <TouchableOpacity onPress={onCancel} style={styles.backBtn} activeOpacity={0.7}>
-            <MaterialIcons name="arrow-back" size={24} color={colors.primary} />
-          </TouchableOpacity>
-        ) : (
-          <View style={{ width: 24 }} />
-        )}
-        <Text style={styles.headerTitle}>ĐỔI MẬT KHẨU TÀI KHOẢN</Text>
-        <TouchableOpacity
-          onPress={() => dispatch(logoutThunk())}
-          style={styles.logoutHeaderBtn}
-          activeOpacity={0.7}
-        >
-          <MaterialIcons name="logout" size={20} color={colors.error} />
-        </TouchableOpacity>
-      </View>
-
-      <ScrollView
-        style={styles.container}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <View style={styles.mainWrapper}>
-          {isForced && (
-            <View style={styles.forcedBanner}>
-              <MaterialIcons name="warning" size={22} color={colors.onTertiaryContainer} />
-              <View style={styles.forcedTextWrapper}>
-                <Text style={styles.forcedTitle}>Bắt buộc thay đổi mật khẩu lần đầu</Text>
-                <Text style={styles.forcedSub}>
-                  Hệ thống yêu cầu cập nhật mật khẩu mới để đảm bảo an toàn truy cập trạm điều khiển SCADA.
-                </Text>
+        <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+          <DaylightCard padding={20} style={styles.card}>
+            <View style={styles.header}>
+              <View style={styles.iconBox}>
+                <MaterialIcons name="security" size={26} color={colors.primary} />
               </View>
-            </View>
-          )}
-
-          <View style={styles.card}>
-            <View style={styles.cardHeader}>
-              <MaterialIcons name="security" size={24} color={colors.primary} />
-              <Text style={styles.cardTitle}>Thiết lập Mật khẩu mới</Text>
+              <Text style={[styles.title, { fontSize: fs(20) }]}>Đổi mật khẩu tài khoản</Text>
+              <Text style={[styles.sub, { fontSize: fs(13) }]}>
+                {isForced
+                  ? 'Vì lý do bảo mật, bạn cần đổi mật khẩu lần đầu và xác nhận mã OTP trước khi vào hệ thống.'
+                  : 'Xác thực mã OTP qua SMS để cập nhật mật khẩu mới an toàn.'}
+              </Text>
             </View>
 
-            <View style={styles.formBody}>
-              {(validationError || error) && (
-                <View style={styles.errorBanner}>
-                  <MaterialIcons name="error-outline" size={18} color={colors.error} />
-                  <Text style={styles.errorBannerText}>{validationError || error}</Text>
-                </View>
-              )}
-
-              {/* Mật khẩu hiện tại */}
-              <View style={styles.fieldContainer}>
-                <Text style={styles.fieldLabel}>MẬT KHẨU HIỆN TẠI</Text>
-                <View style={styles.inputWrapper}>
-                  <MaterialIcons name="lock-outline" size={20} color={colors.onSurfaceVariant} />
-                  <TextInput
-                    style={[styles.input, styles.monoInput]}
-                    value={currentPassword}
-                    onChangeText={setCurrentPassword}
-                    placeholder="Nhập mật khẩu hiện tại"
-                    placeholderTextColor={colors.outline}
-                    secureTextEntry={!showCurrent}
-                  />
-                  <TouchableOpacity onPress={() => setShowCurrent(!showCurrent)} style={styles.eyeBtn}>
-                    <MaterialIcons
-                      name={showCurrent ? 'visibility' : 'visibility-off'}
-                      size={18}
-                      color={colors.onSurfaceVariant}
-                    />
-                  </TouchableOpacity>
-                </View>
+            {errorMsg ? (
+              <View style={styles.errorBox}>
+                <MaterialIcons name="error-outline" size={18} color={colors.dangerText} />
+                <Text style={styles.errorText}>{errorMsg}</Text>
               </View>
+            ) : null}
 
-              {/* Mật khẩu mới */}
-              <View style={styles.fieldContainer}>
-                <Text style={styles.fieldLabel}>MẬT KHẨU MỚI (TỐI THIỂU 6 KÝ TỰ)</Text>
-                <View style={styles.inputWrapper}>
-                  <MaterialIcons name="vibration" size={20} color={colors.onSurfaceVariant} />
-                  <TextInput
-                    style={[styles.input, styles.monoInput]}
-                    value={newPassword}
-                    onChangeText={setNewPassword}
-                    placeholder="Nhập mật khẩu mới"
-                    placeholderTextColor={colors.outline}
-                    secureTextEntry={!showNew}
-                  />
-                  <TouchableOpacity onPress={() => setShowNew(!showNew)} style={styles.eyeBtn}>
-                    <MaterialIcons
-                      name={showNew ? 'visibility' : 'visibility-off'}
-                      size={18}
-                      color={colors.onSurfaceVariant}
-                    />
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              {/* Xác nhận mật khẩu mới */}
-              <View style={styles.fieldContainer}>
-                <Text style={styles.fieldLabel}>XÁC NHẬN MẬT KHẨU MỚI</Text>
-                <View style={styles.inputWrapper}>
-                  <MaterialIcons name="check-circle-outline" size={20} color={colors.onSurfaceVariant} />
-                  <TextInput
-                    style={[styles.input, styles.monoInput]}
-                    value={confirmPassword}
-                    onChangeText={setConfirmPassword}
-                    placeholder="Nhập lại mật khẩu mới"
-                    placeholderTextColor={colors.outline}
-                    secureTextEntry={!showConfirm}
-                  />
-                  <TouchableOpacity onPress={() => setShowConfirm(!showConfirm)} style={styles.eyeBtn}>
-                    <MaterialIcons
-                      name={showConfirm ? 'visibility' : 'visibility-off'}
-                      size={18}
-                      color={colors.onSurfaceVariant}
-                    />
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              <TouchableOpacity
-                style={[styles.submitBtn, isLoading && styles.submitBtnDisabled]}
-                onPress={handleChangePassword}
-                disabled={isLoading}
-                activeOpacity={0.85}
-              >
-                {isLoading ? (
-                  <ActivityIndicator color={colors.onPrimary} size="small" />
-                ) : (
-                  <>
-                    <MaterialIcons name="save" size={20} color={colors.onPrimary} />
-                    <Text style={styles.submitBtnText}>CẬP NHẬT MẬT KHẨU</Text>
-                  </>
-                )}
-              </TouchableOpacity>
+            <View style={styles.field}>
+              <Text style={styles.label}>Mật khẩu hiện tại</Text>
+              <TextInput
+                value={currentPassword}
+                onChangeText={setCurrentPassword}
+                secureTextEntry
+                placeholder="Nhập mật khẩu hiện tại"
+                placeholderTextColor={colors.subtle}
+                style={styles.input}
+              />
             </View>
-          </View>
-        </View>
-      </ScrollView>
+
+            <View style={styles.field}>
+              <Text style={styles.label}>Mật khẩu mới (tối thiểu 8 ký tự)</Text>
+              <TextInput
+                value={newPassword}
+                onChangeText={setNewPassword}
+                secureTextEntry
+                placeholder="Nhập mật khẩu mới"
+                placeholderTextColor={colors.subtle}
+                style={styles.input}
+              />
+            </View>
+
+            <View style={styles.field}>
+              <Text style={styles.label}>Xác nhận mật khẩu mới</Text>
+              <TextInput
+                value={confirmPassword}
+                onChangeText={setConfirmPassword}
+                secureTextEntry
+                placeholder="Nhập lại mật khẩu mới"
+                placeholderTextColor={colors.subtle}
+                style={styles.input}
+              />
+            </View>
+
+            <View style={styles.field}>
+              <Text style={styles.label}>Mã OTP xác thực ({phoneNumber || '--'})</Text>
+              <View style={styles.otpRow}>
+                <TextInput
+                  value={otp}
+                  onChangeText={(txt) => setOtp(txt.replace(/\D/g, '').slice(0, 6))}
+                  keyboardType="number-pad"
+                  maxLength={6}
+                  placeholder="6 số OTP"
+                  placeholderTextColor={colors.subtle}
+                  style={[styles.input, styles.otpInput]}
+                />
+                <TouchableOpacity
+                  disabled={countdown > 0 || sendingOtp}
+                  onPress={handleSendOtp}
+                  style={[styles.otpBtn, (countdown > 0 || sendingOtp) && { opacity: 0.55 }]}
+                >
+                  <Text style={styles.otpBtnText}>
+                    {sendingOtp ? 'Đang gửi' : countdown > 0 ? `${countdown}s` : 'Gửi mã OTP'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              {devOtpHint ? (
+                <Text style={styles.devOtpHint}>Mã OTP thử nghiệm: {devOtpHint}</Text>
+              ) : null}
+            </View>
+
+            <PrimaryButton
+              title="Xác nhận đổi mật khẩu"
+              iconName="check-circle"
+              loading={isLoading}
+              onPress={handleSubmit}
+            />
+
+            <PrimaryButton
+              title={isForced ? 'Đăng xuất khỏi phiên hiện tại' : 'Quay lại'}
+              variant="ghost"
+              compact
+              onPress={() => (isForced ? dispatch(logoutThunk()) : onCancel?.())}
+            />
+          </DaylightCard>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 };
@@ -225,149 +221,106 @@ export const ChangePasswordScreen: React.FC<ChangePasswordScreenProps> = ({
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: colors.surface,
-  },
-  headerBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: colors.surfaceContainerLowest,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.outlineVariant,
-  },
-  backBtn: {
-    padding: 4,
-  },
-  headerTitle: {
-    ...typography.headlineSm,
-    color: colors.primary,
-    fontWeight: '700',
-  },
-  logoutHeaderBtn: {
-    padding: 4,
-  },
-  container: {
-    flex: 1,
+    backgroundColor: colors.canvas,
   },
   scrollContent: {
-    paddingVertical: 16,
-    paddingHorizontal: 14,
-  },
-  mainWrapper: {
-    maxWidth: 480,
+    padding: 16,
+    maxWidth: 460,
     width: '100%',
     alignSelf: 'center',
-    gap: 14,
-  },
-  forcedBanner: {
-    backgroundColor: colors.errorContainer,
-    borderWidth: 1,
-    borderColor: colors.onErrorContainer,
-    borderRadius: 8,
-    padding: 12,
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
-  },
-  forcedTextWrapper: {
-    flex: 1,
-    gap: 2,
-  },
-  forcedTitle: {
-    ...typography.headlineSm,
-    color: colors.onErrorContainer,
-    fontWeight: '700',
-  },
-  forcedSub: {
-    ...typography.bodySm,
-    color: colors.onSurface,
+    justifyContent: 'center',
+    flexGrow: 1,
   },
   card: {
-    backgroundColor: colors.surfaceContainerLowest,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: colors.outlineVariant,
-    overflow: 'hidden',
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: colors.surfaceContainerLow,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.outlineVariant,
-  },
-  cardTitle: {
-    ...typography.headlineMd,
-    color: colors.primary,
-  },
-  formBody: {
-    padding: 16,
     gap: 14,
   },
-  errorBanner: {
-    backgroundColor: '#FEE2E2',
-    borderColor: '#FCA5A5',
-    borderWidth: 1,
-    borderRadius: 6,
-    padding: 10,
-    flexDirection: 'row',
+  header: {
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
   },
-  errorBannerText: {
-    ...typography.bodySm,
-    color: '#B91C1C',
-    flex: 1,
-  },
-  fieldContainer: {
-    gap: 6,
-  },
-  fieldLabel: {
-    ...typography.labelMd,
-    color: colors.onSurfaceVariant,
-    fontWeight: '600',
-  },
-  inputWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.surfaceContainerLow,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.outlineVariant,
-    paddingHorizontal: 12,
-  },
-  input: {
-    flex: 1,
-    paddingVertical: 10,
-    ...typography.bodyMd,
-    color: colors.onSurface,
-  },
-  monoInput: {
-    ...typography.telemetryValueMd,
-  },
-  eyeBtn: {
-    padding: 6,
-  },
-  submitBtn: {
-    backgroundColor: colors.primary,
-    paddingVertical: 12,
-    borderRadius: 8,
-    flexDirection: 'row',
+  iconBox: {
+    width: 52,
+    height: 52,
+    borderRadius: 16,
+    backgroundColor: colors.primarySoft,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  title: {
+    fontFamily: fontFamily.bold,
+    color: colors.ink,
+    textAlign: 'center',
+  },
+  sub: {
+    fontFamily: fontFamily.regular,
+    color: colors.muted,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  errorBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
-    marginTop: 8,
+    backgroundColor: colors.dangerBg,
+    borderWidth: 1,
+    borderColor: colors.dangerBorder,
+    borderRadius: radii.control,
+    padding: 12,
   },
-  submitBtnDisabled: {
-    opacity: 0.7,
+  errorText: {
+    flex: 1,
+    fontFamily: fontFamily.medium,
+    fontSize: 13,
+    color: colors.dangerText,
   },
-  submitBtnText: {
-    ...typography.headlineSm,
-    color: colors.onPrimary,
+  field: {
+    gap: 6,
+  },
+  label: {
+    fontFamily: fontFamily.semiBold,
+    fontSize: 13,
+    color: colors.ink,
+  },
+  input: {
+    minHeight: touchTargets.min,
+    borderRadius: radii.control,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+    backgroundColor: colors.surfaceContainerLow,
+    paddingHorizontal: 14,
+    fontFamily: fontFamily.regular,
+    fontSize: 15,
+    color: colors.ink,
+  },
+  otpRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  otpInput: {
+    flex: 1,
+    fontFamily: fontFamily.bold,
+    fontVariant: ['tabular-nums'],
+    letterSpacing: 3,
+  },
+  otpBtn: {
+    minHeight: touchTargets.min,
+    paddingHorizontal: 14,
+    borderRadius: radii.control,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    backgroundColor: colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  otpBtnText: {
+    fontFamily: fontFamily.bold,
+    fontSize: 13,
+    color: colors.primaryDark,
+  },
+  devOtpHint: {
+    fontFamily: fontFamily.bold,
+    fontSize: 12,
+    color: colors.primaryDark,
+    fontVariant: ['tabular-nums'],
   },
 });

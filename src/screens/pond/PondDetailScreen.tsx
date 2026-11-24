@@ -1,450 +1,388 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import {
+  RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
-  View,
   TouchableOpacity,
-  ScrollView,
-  SafeAreaView,
-  StatusBar,
-  ActivityIndicator,
+  View,
 } from 'react-native';
-import { MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useNavigation, useRoute } from '@react-navigation/native';
+import { MaterialIcons } from '@expo/vector-icons';
 import { colors } from '../../constants/colors';
-import { typography } from '../../constants/typography';
+import { radii, touchTargets } from '../../constants/theme';
+import { fontFamily } from '../../constants/typography';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
-import { SensorCard } from '../../components/pond/SensorCard';
 import {
-  resolveDoAlert,
-  toggleAeratorActivation,
-  pingSensor,
-  pingHardware,
-  acknowledgeHardware,
-  setDiagnosticStatus,
   fetchPondDetail,
-  fetchPonds,
-  fetchLatestTelemetry,
-  refreshRealtimeTelemetry,
+  mapTelemetryToSensors,
+  selectPond,
+  SensorMetric,
 } from '../../store/slices/pondSlice';
-
+import { fetchManualLogsThunk } from '../../store/slices/cropSlice';
+import { setPondSelectorOpen } from '../../store/slices/uiSlice';
 import { usePondSubscription } from '../../utils/usePondSubscription';
+import { SensorCard } from '../../components/pond/SensorCard';
+import { DaylightCard, PrimaryButton, StatusDot, useFontScale } from '../../components/ui';
+
+function fmtTime(iso?: string | null): string {
+  if (!iso) return '--';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '--';
+  return d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+}
+
+function formatAlertMessage(msg?: string | null): string {
+  if (!msg) return '';
+  return msg
+    .replace(/\bdissolvedOxygen\b/gi, 'Oxy hòa tan (DO)')
+    .replace(/\btemperature\b/gi, 'Nhiệt độ')
+    .replace(/\bsalinity\b/gi, 'Độ mặn')
+    .replace(/\bturbidity\b/gi, 'Độ đục')
+    .replace(/\bwaterLevel\b/gi, 'Mực nước');
+}
 
 export const PondDetailScreen: React.FC = () => {
   const navigation = useNavigation<any>();
+  const route = useRoute<any>();
   const dispatch = useAppDispatch();
+  const { fs } = useFontScale();
 
-  const {
-    ponds,
-    selectedPondId,
-    pondASensors,
-    doAlertResolved,
-    aeratorActivated,
-    sensorPingSuccess,
-    hardwarePingSuccess,
-    hardwareAcknowledged,
-    diagnosticStatus,
-  } = useAppSelector((state) => state.pond);
+  const routePondId = route?.params?.pondId as string | undefined;
+  const { ponds, selectedPondId, thresholdsMap, latestTelemetryMap } = useAppSelector(
+    (state) => state.pond
+  );
+  const manualLogsByPond = useAppSelector((state) => state.crop.manualLogsByPond);
+  const alerts = useAppSelector((state) => state.alert.alerts);
 
-  const selectedPond =
-    ponds.find((p) => p.id === selectedPondId) || ponds[0];
+  const activePond = useMemo(() => {
+    const id = routePondId || selectedPondId;
+    return ponds.find((p) => p.id === id) || ponds[0] || null;
+  }, [ponds, routePondId, selectedPondId]);
 
-  // Khởi tạo WebSocket room subscription cho đầm tôm được chọn
-  const { isSubscribed } = usePondSubscription(selectedPond?.id);
+  const pondId = activePond?.id;
+
+  usePondSubscription(pondId);
 
   useEffect(() => {
-    if (selectedPondId) {
-      dispatch(fetchPondDetail(selectedPondId));
-    }
-  }, [dispatch, selectedPondId]);
-
-  const [isRefreshing, setIsRefreshing] = useState(false);
-
-  const handleRefresh = async () => {
-    setIsRefreshing(true);
-    try {
-      await dispatch(fetchPonds()).unwrap();
-      if (selectedPond?.deviceId) {
-        await dispatch(fetchLatestTelemetry(selectedPond.deviceId)).unwrap();
-      } else if (selectedPondId) {
-        await dispatch(fetchPondDetail(selectedPondId)).unwrap();
+    if (pondId) {
+      if (selectedPondId !== pondId) {
+        dispatch(selectPond(pondId));
       }
-    } catch {
-      // Ignorable fallback
-    } finally {
-      dispatch(refreshRealtimeTelemetry());
-      setTimeout(() => {
-        setIsRefreshing(false);
-      }, 400);
+      dispatch(fetchPondDetail(pondId));
+      dispatch(fetchManualLogsThunk(pondId));
     }
+  }, [pondId, dispatch, selectedPondId]);
+
+  const sensors = useMemo(() => {
+    if (!activePond) return mapTelemetryToSensors(null);
+    const telemetry =
+      latestTelemetryMap[activePond.id] ||
+      (activePond.deviceId ? latestTelemetryMap[activePond.deviceId] : null);
+    return mapTelemetryToSensors(telemetry, thresholdsMap[activePond.id]);
+  }, [activePond, latestTelemetryMap, thresholdsMap]);
+
+  const sensorRows = useMemo(() => {
+    const rows: SensorMetric[][] = [];
+    for (let i = 0; i < sensors.length; i += 2) {
+      rows.push(sensors.slice(i, i + 2));
+    }
+    return rows;
+  }, [sensors]);
+
+  const latestManualLog = useMemo(() => {
+    if (!pondId) return null;
+    const logs = manualLogsByPond[pondId] || [];
+    return logs[0] || null;
+  }, [pondId, manualLogsByPond]);
+
+  const activePondAlert = useMemo(() => {
+    if (!pondId) return null;
+    return alerts.find((a) => a.pondId === pondId && a.status === 'ACTIVE') || null;
+  }, [pondId, alerts]);
+
+  const [refreshing, setRefreshing] = React.useState(false);
+  const onRefresh = async () => {
+    if (!pondId) return;
+    setRefreshing(true);
+    await Promise.all([
+      dispatch(fetchPondDetail(pondId)),
+      dispatch(fetchManualLogsThunk(pondId)),
+    ]);
+    setRefreshing(false);
   };
 
-  const handleRunDiagnostic = () => {
-    dispatch(setDiagnosticStatus('running'));
-    setTimeout(() => {
-      dispatch(setDiagnosticStatus('passed'));
-      setTimeout(() => {
-        dispatch(setDiagnosticStatus('idle'));
-      }, 2500);
-    }, 1500);
-  };
+  if (!activePond) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.emptyWrap}>
+          <Text style={[styles.emptyText, { fontSize: fs(15) }]}>
+            Chưa có dữ liệu ao nuôi.
+          </Text>
+          <PrimaryButton title="Quay lại" onPress={() => navigation.goBack()} />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  const headerStatusText =
+    activePond.status === 'CRITICAL'
+      ? 'Nguy hiểm'
+      : activePond.status === 'WARNING'
+      ? 'Cần chú ý'
+      : null;
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="light-content" backgroundColor={colors.primaryContainer} />
+    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      <View style={styles.topBar}>
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          style={styles.iconBtn}
+          accessibilityLabel="Quay lại"
+        >
+          <MaterialIcons name="arrow-back" size={24} color={colors.ink} />
+        </TouchableOpacity>
 
-      {/* Top Header */}
-      <View style={styles.topHeader}>
-        <View style={styles.topHeaderLeft}>
-          <TouchableOpacity
-            style={styles.iconBtn}
-            activeOpacity={0.7}
-            onPress={() => navigation.navigate('Overview')}
+        <TouchableOpacity
+          activeOpacity={0.8}
+          onPress={() => dispatch(setPondSelectorOpen(true))}
+          style={styles.pondTitleBtn}
+        >
+          <Text style={[styles.topTitle, { fontSize: fs(17) }]} numberOfLines={1}>
+            {activePond.name}
+          </Text>
+          <MaterialIcons name="keyboard-arrow-down" size={20} color={colors.primary} />
+        </TouchableOpacity>
+
+        {headerStatusText ? (
+          <View
+            style={[
+              styles.headerBadge,
+              activePond.status === 'CRITICAL' ? styles.badgeDanger : styles.badgeWarn,
+            ]}
           >
-            <MaterialIcons name="arrow-back" size={24} color={colors.onPrimary} />
-          </TouchableOpacity>
-          <View style={styles.logoTitleRow}>
-            <MaterialCommunityIcons name="waves" size={24} color={colors.secondaryFixedDim} />
-            <Text style={styles.headerTitle} numberOfLines={1}>
-              Pond Detail Telemetry
+            <MaterialIcons
+              name="warning-amber"
+              size={14}
+              color={activePond.status === 'CRITICAL' ? colors.dangerText : colors.warnText}
+            />
+            <Text
+              style={[
+                styles.headerBadgeText,
+                {
+                  color:
+                    activePond.status === 'CRITICAL' ? colors.dangerText : colors.warnText,
+                },
+              ]}
+            >
+              {headerStatusText}
             </Text>
           </View>
-        </View>
+        ) : null}
 
-        <View style={styles.topHeaderRight}>
-          <TouchableOpacity style={styles.iconBtn} activeOpacity={0.7}>
-            <MaterialIcons name="tune" size={22} color={colors.onPrimary} />
-          </TouchableOpacity>
-          <View style={styles.profileAvatar}>
-            <MaterialIcons name="person" size={18} color={colors.onPrimary} />
-          </View>
-        </View>
+        <TouchableOpacity
+          onPress={() =>
+            navigation.navigate('ThresholdsNotifications', { pondId: activePond.id })
+          }
+          style={styles.iconBtn}
+          accessibilityLabel="Cài đặt ngưỡng ao"
+        >
+          <MaterialIcons name="tune" size={22} color={colors.ink} />
+        </TouchableOpacity>
       </View>
 
-      {/* Main Content ScrollView */}
       <ScrollView
-        style={styles.scrollContainer}
+        style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
+        }
       >
-        {/* Top Context / Identification Block */}
-        <View style={styles.contextCard}>
-          <View style={styles.contextTopRow}>
-            <View style={styles.pondTitleGroup}>
-              <View style={styles.pondNameRow}>
-                <Text style={styles.pondTitle}>
-                  {selectedPond.nameVi} ({selectedPond.nameEn})
-                </Text>
-                <View style={styles.activeBadge}>
-                  <View style={styles.activeDot} />
-                  <Text style={styles.activeBadgeText}>{selectedPond.status}</Text>
-                </View>
-              </View>
-              <View style={styles.locationRow}>
-                <MaterialIcons name="navigation" size={14} color={colors.secondary} />
-                <Text style={styles.locationText}>
-                  {selectedPond.cluster} • {selectedPond.zone}
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.contextActions}>
-              <TouchableOpacity
-                style={styles.smallActionBtn}
-                activeOpacity={0.7}
-                onPress={handleRefresh}
-                disabled={isRefreshing}
-              >
-                {isRefreshing ? (
-                  <ActivityIndicator size="small" color={colors.primary} />
-                ) : (
-                  <MaterialIcons name="sync" size={18} color={colors.primary} />
-                )}
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.smallActionBtn} activeOpacity={0.7}>
-                <MaterialIcons name="more-vert" size={18} color={colors.primary} />
-              </TouchableOpacity>
-            </View>
+        <DaylightCard padding={14}>
+          <Text style={[styles.cropTitle, { fontSize: fs(15) }]}>
+            {activePond.shrimpSpecies || 'Ao nuôi thương phẩm'}
+            {activePond.docDays !== null ? ` · Ngày nuôi DOC ${activePond.docDays}` : ''}
+            {` · ${activePond.areaM2} m² (sâu ${activePond.depthM} m)`}
+          </Text>
+          <View style={styles.deviceLine}>
+            <Text style={[styles.deviceMeta, { fontSize: fs(12) }]} numberOfLines={1}>
+              {activePond.deviceName || 'Chưa gắn trạm ESP32'}
+              {activePond.recordedAt ? ` · Đồng bộ ${fmtTime(activePond.recordedAt)}` : ''}
+            </Text>
+            <StatusDot
+              tone={
+                activePond.deviceStatus === 'ONLINE'
+                  ? 'safe'
+                  : activePond.deviceStatus === 'MAINTENANCE'
+                  ? 'warning'
+                  : 'offline'
+              }
+              label={
+                activePond.deviceStatus === 'ONLINE'
+                  ? 'Đang hoạt động'
+                  : activePond.deviceStatus === 'MAINTENANCE'
+                  ? 'Đang bảo trì'
+                  : 'Mất kết nối'
+              }
+            />
           </View>
+        </DaylightCard>
 
-          {/* Health summary strip */}
-          <View style={styles.healthStrip}>
-            <View style={styles.healthStripLeft}>
-              <View style={styles.sensorIconBox}>
-                <MaterialIcons name="sensors" size={16} color={colors.primary} />
-              </View>
-              <View>
-                <Text style={styles.healthStripLabel}>Gateway Stream</Text>
-                <Text style={styles.healthStripVal}>{selectedPond.gatewayStreamStatus}</Text>
-              </View>
-            </View>
-            <View style={styles.healthStripRight}>
-              <View style={styles.linkDot} />
-              <Text style={styles.linkQualityText}>{selectedPond.linkQuality}</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Section Title: Realtime Telemetry */}
-        <View style={styles.sectionHeader}>
-          <View style={styles.sectionHeaderTitleRow}>
-            <MaterialIcons name="show-chart" size={18} color={colors.primary} />
-            <Text style={styles.sectionTitle}>PondGuard Telemetry</Text>
-          </View>
-          <View style={styles.nodesBadge}>
-            <Text style={styles.nodesBadgeText}>6 NODES ONLINE</Text>
-          </View>
-        </View>
-
-        {/* Telemetry Metric Grid (6 Sensor Cards in 2 columns) */}
         <View style={styles.sensorGrid}>
-          {pondASensors.map((sensor) => (
-            <View key={sensor.id} style={styles.sensorGridCol}>
-              <SensorCard sensor={sensor} />
+          {sensorRows.map((row, rowIdx) => (
+            <View key={rowIdx} style={styles.sensorRow}>
+              {row.map((sensor) => (
+                <SensorCard key={sensor.id} sensor={sensor} />
+              ))}
+              {row.length === 1 ? <View style={styles.sensorSpacer} /> : null}
             </View>
           ))}
         </View>
 
-        {/* Dedicated Local Alerts Integration for Pond A */}
-        <View style={styles.alertsCard}>
-          <View style={styles.alertsHeader}>
-            <View style={styles.alertsTitleRow}>
-              <MaterialIcons name="warning" size={20} color={colors.error} />
-              <Text style={styles.alertsTitle}>Cảnh Báo Cục Bộ {selectedPond.nameVi}</Text>
-            </View>
-            <View style={styles.alertCountBadge}>
-              <Text style={styles.alertCountText}>2 Cảnh Báo Môi Trường</Text>
-            </View>
-          </View>
-
-          <View style={styles.alertsList}>
-            {/* Alert 1: DO Low Breach */}
-            <View style={[styles.alertItem, doAlertResolved && styles.resolvedOpacity]}>
-              <View style={styles.alertItemHeader}>
-                <View style={styles.alertIconBoxRed}>
-                  <MaterialIcons name="air" size={18} color={colors.onErrorContainer} />
-                </View>
-                <View style={styles.alertItemContent}>
-                  <View style={styles.alertBadgeRow}>
-                    <Text style={styles.alertRedTag}>CẢNH BÁO KHẨN CẤP</Text>
-                    <Text style={styles.alertValueHighlight}>DO: 3.8 mg/L</Text>
-                  </View>
-                  <Text style={styles.alertMainText}>
-                    Oxy hòa tan dưới ngưỡng an toàn (DO &lt; 4.0 mg/L)
-                  </Text>
-                  <Text style={styles.alertSubText}>
-                    Phát hiện lúc 15:40 • Xu hướng tiếp tục giảm nhanh
-                  </Text>
-                </View>
-              </View>
-
-              <View style={styles.alertItemActions}>
-                <TouchableOpacity
-                  style={[
-                    styles.resolveBtn,
-                    doAlertResolved && styles.resolvedBtnActive,
-                  ]}
-                  activeOpacity={0.8}
-                  onPress={() => dispatch(resolveDoAlert())}
-                >
-                  <MaterialIcons
-                    name={doAlertResolved ? 'check-circle' : 'check-circle-outline'}
-                    size={14}
-                    color={colors.onError}
-                  />
-                  <Text style={styles.resolveBtnText}>
-                    {doAlertResolved ? 'Đã Xử Lý' : 'Acknowledge & Resolve'}
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[
-                    styles.aeratorBtn,
-                    aeratorActivated && styles.aeratorBtnActive,
-                  ]}
-                  activeOpacity={0.8}
-                  onPress={() => dispatch(toggleAeratorActivation())}
-                >
-                  <Text style={styles.aeratorBtnText}>
-                    {aeratorActivated ? 'Quạt nước: ĐÃ BẬT' : 'Kích hoạt sục khí'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            {/* Alert 2: Sensor Fault */}
-            <View style={styles.alertItem}>
-              <View style={styles.alertItemHeader}>
-                <View style={styles.alertIconBoxRed}>
-                  <MaterialIcons name="sensors-off" size={18} color={colors.onErrorContainer} />
-                </View>
-                <View style={styles.alertItemContent}>
-                  <View style={styles.alertBadgeRow}>
-                    <Text style={styles.alertRedTag}>LỖI CẢM BIẾN</Text>
-                    <Text style={styles.alertTimeTag}>Mất tín hiệu 12p</Text>
-                  </View>
-                  <Text style={styles.alertMainText}>
-                    Trạm cảm biến Oxy tầng đáy ESP32 #SN-04
-                  </Text>
-                  <Text style={styles.alertSubText}>
-                    Đang tự động chuyển sang trạm dự phòng probe B
-                  </Text>
-                </View>
-              </View>
-
-              <View style={styles.alertItemActions}>
-                <TouchableOpacity
-                  style={[
-                    styles.pingSensorBtn,
-                    sensorPingSuccess && styles.pingSuccessBtn,
-                  ]}
-                  activeOpacity={0.8}
-                  onPress={() => dispatch(pingSensor())}
-                >
-                  <MaterialIcons
-                    name={sensorPingSuccess ? 'check' : 'cell-tower'}
-                    size={14}
-                    color={colors.onPrimary}
-                  />
-                  <Text style={styles.pingSensorText}>
-                    {sensorPingSuccess
-                      ? 'ACK Khôi Phục (12ms)'
-                      : 'Ping & Khôi phục kết nối'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
-        </View>
-
-        {/* Dedicated Hardware Alerts for Pond A */}
-        <View style={styles.alertsCard}>
-          <View style={styles.alertsHeader}>
-            <View style={styles.alertsTitleRow}>
-              <MaterialIcons name="warning" size={20} color={colors.error} />
-              <Text style={styles.alertsTitle}>Alerts for {selectedPond.nameEn}</Text>
-            </View>
-            <View style={styles.alertCountBadge}>
-              <Text style={styles.alertCountText}>1 Critical Fault</Text>
-            </View>
-          </View>
-
-          <View style={styles.alertsList}>
-            {/* Hardware Fault Item */}
-            <View
-              style={[
-                styles.alertItem,
-                hardwareAcknowledged && styles.resolvedOpacity,
-              ]}
-            >
-              <View style={styles.alertItemHeader}>
-                <View style={styles.alertIconBoxRed}>
-                  <MaterialIcons name="wifi-off" size={18} color={colors.onErrorContainer} />
-                </View>
-                <View style={styles.alertItemContent}>
-                  <View style={styles.alertBadgeRow}>
-                    <Text style={styles.alertRedTag}>HARDWARE ALERT</Text>
-                    <Text style={styles.alertTimeTag}>Offline 42m</Text>
-                  </View>
-                  <Text style={styles.alertMainText}>
-                    No comms: ShrimpTalk #ST09101
-                  </Text>
-                  <Text style={styles.alertSubText}>
-                    14 May, 24 15:29 • LoRa Ch 4 packet loss
-                  </Text>
-                </View>
-              </View>
-
-              <View style={styles.alertItemActions}>
-                <TouchableOpacity
-                  style={[
-                    styles.pingSensorBtn,
-                    hardwarePingSuccess && styles.pingSuccessBtn,
-                  ]}
-                  activeOpacity={0.8}
-                  onPress={() => dispatch(pingHardware())}
-                >
-                  <MaterialIcons
-                    name={hardwarePingSuccess ? 'check' : 'cell-tower'}
-                    size={14}
-                    color={colors.onPrimary}
-                  />
-                  <Text style={styles.pingSensorText}>
-                    {hardwarePingSuccess
-                      ? 'Packet ACK (14ms)'
-                      : 'Ping Device'}
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.ackSecondaryBtn}
-                  activeOpacity={0.7}
-                  onPress={() => dispatch(acknowledgeHardware())}
-                >
-                  <Text style={styles.ackSecondaryText}>
-                    {hardwareAcknowledged ? 'Acknowledged' : 'Acknowledge'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            {/* Info Item: Feeder Status */}
-            <View style={styles.infoItem}>
-              <View style={styles.infoIconBox}>
-                <MaterialIcons name="set-meal" size={18} color={colors.onSecondaryContainer} />
-              </View>
-              <View style={styles.alertItemContent}>
-                <View style={styles.alertBadgeRow}>
-                  <Text style={styles.infoGreenTag}>OPERATIONAL INFO</Text>
-                  <Text style={styles.infoBatteryText}>92% Battery</Text>
-                </View>
-                <Text style={styles.alertMainText}>
-                  PondMother Feeder #A0D35E
-                </Text>
-                <Text style={styles.alertSubText}>
-                  Dispense Cycle #4 completed • Schedule Active
-                </Text>
-              </View>
-            </View>
-          </View>
-        </View>
-
-        {/* Bottom Actions */}
-        <View style={styles.bottomActionsCol}>
-          <TouchableOpacity
-            style={[
-              styles.runDiagBtn,
-              diagnosticStatus === 'passed' && styles.diagPassedBtn,
-            ]}
-            activeOpacity={0.9}
-            onPress={handleRunDiagnostic}
-            disabled={diagnosticStatus === 'running'}
-          >
-            <MaterialIcons
-              name={
-                diagnosticStatus === 'passed'
-                  ? 'verified'
-                  : diagnosticStatus === 'running'
-                  ? 'sync'
-                  : 'play-circle'
-              }
-              size={20}
-              color={colors.onPrimary}
-            />
-            <Text style={styles.runDiagText}>
-              {diagnosticStatus === 'running'
-                ? 'Running Probe Suite...'
-                : diagnosticStatus === 'passed'
-                ? 'Calibration Passed (6/6)'
-                : 'Run Diagnostic Test'}
+        <DaylightCard padding={14} style={styles.testKitCard}>
+          <View style={styles.testKitHeader}>
+            <Text style={[styles.testKitTitle, { fontSize: fs(15) }]}>
+              Kết quả đo tay gần nhất · Test Kit
             </Text>
-          </TouchableOpacity>
+            <Text style={[styles.testKitTime, { fontSize: fs(12) }]}>
+              {latestManualLog
+                ? `${new Date(latestManualLog.testedAt).toLocaleDateString('vi-VN')} ${fmtTime(
+                    latestManualLog.testedAt
+                  )}`
+                : 'Chưa có bản ghi'}
+            </Text>
+          </View>
 
-          <TouchableOpacity style={styles.historyCurvesBtn} activeOpacity={0.8}>
-            <MaterialIcons name="trending-up" size={18} color={colors.secondary} />
-            <Text style={styles.historyCurvesText}>View Historical Curves</Text>
-          </TouchableOpacity>
+          {latestManualLog ? (
+            <View style={styles.testKitBadges}>
+              <View
+                style={[
+                  styles.kitPill,
+                  latestManualLog.nh3Value >= 0.1 ? styles.kitPillWarn : styles.kitPillSafe,
+                ]}
+              >
+                <MaterialIcons
+                  name={latestManualLog.nh3Value >= 0.1 ? 'warning-amber' : 'check-circle'}
+                  size={16}
+                  color={latestManualLog.nh3Value >= 0.1 ? colors.warnText : colors.safeText}
+                />
+                <Text style={[styles.kitPillText, { fontSize: fs(13) }]}>
+                  NH3: {Number(latestManualLog.nh3Value).toFixed(2).replace('.', ',')} mg/L
+                </Text>
+              </View>
+
+              <View
+                style={[
+                  styles.kitPill,
+                  latestManualLog.no2Value >= 0.5 ? styles.kitPillWarn : styles.kitPillSafe,
+                ]}
+              >
+                <MaterialIcons
+                  name={latestManualLog.no2Value >= 0.5 ? 'warning-amber' : 'check-circle'}
+                  size={16}
+                  color={latestManualLog.no2Value >= 0.5 ? colors.warnText : colors.safeText}
+                />
+                <Text style={[styles.kitPillText, { fontSize: fs(13) }]}>
+                  NO2: {Number(latestManualLog.no2Value).toFixed(2).replace('.', ',')} mg/L
+                </Text>
+              </View>
+            </View>
+          ) : null}
+
+          <PrimaryButton
+            title="+ Nhập đo tay mới & Nhật ký vụ nuôi"
+            variant="ghost"
+            compact
+            onPress={() =>
+              navigation.navigate('ManualLogCrop', {
+                pondId: activePond.id,
+                initialTab: 'testkit',
+              })
+            }
+          />
+        </DaylightCard>
+
+        {activePondAlert ? (
+          <DaylightCard
+            tone={activePondAlert.alertLevel === 'CRITICAL' ? 'danger' : 'warning'}
+            padding={14}
+          >
+            <View style={styles.alertBoxHead}>
+              <MaterialIcons
+                name="warning-amber"
+                size={20}
+                color={
+                  activePondAlert.alertLevel === 'CRITICAL'
+                    ? colors.dangerText
+                    : colors.warnText
+                }
+              />
+              <Text
+                style={[
+                  styles.alertHeadline,
+                  {
+                    fontSize: fs(14),
+                    color:
+                      activePondAlert.alertLevel === 'CRITICAL'
+                        ? colors.dangerText
+                        : colors.warnText,
+                  },
+                ]}
+              >
+                {formatAlertMessage(activePondAlert.message) ||
+                  `Cảnh báo ${formatAlertMessage(activePondAlert.metricName)}: ${activePondAlert.triggeredValue}`}
+              </Text>
+            </View>
+            {activePondAlert.recommendation?.actionSuggestion ? (
+              <View style={styles.recBox}>
+                <MaterialIcons name="lightbulb-outline" size={18} color={colors.primary} />
+                <Text style={[styles.recText, { fontSize: fs(13) }]}>
+                  Khuyến nghị AI: {activePondAlert.recommendation.actionSuggestion}
+                </Text>
+              </View>
+            ) : null}
+            <TouchableOpacity
+              onPress={() => navigation.navigate('MainTabs', { screen: 'Alerts' })}
+              style={styles.alertLinkBtn}
+            >
+              <Text style={[styles.alertLinkText, { fontSize: fs(13) }]}>
+                Xem trung tâm cảnh báo →
+              </Text>
+            </TouchableOpacity>
+          </DaylightCard>
+        ) : null}
+
+        <View style={styles.bottomActions}>
+          <PrimaryButton
+            title="Dự báo AI 24h"
+            iconName="auto-awesome"
+            style={styles.halfBtn}
+            onPress={() => navigation.navigate('MainTabs', { screen: 'AiForecast' })}
+          />
+          <PrimaryButton
+            title="Cài ngưỡng"
+            iconName="tune"
+            variant="ghost"
+            style={styles.halfBtn}
+            onPress={() =>
+              navigation.navigate('ThresholdsNotifications', { pondId: activePond.id })
+            }
+          />
         </View>
+
+        <TouchableOpacity
+          activeOpacity={0.8}
+          onPress={() => navigation.navigate('MainTabs', { screen: 'Devices' })}
+          style={styles.deviceLinkCard}
+        >
+          <MaterialIcons name="sensors" size={20} color={colors.primary} />
+          <Text style={[styles.deviceLinkText, { fontSize: fs(14) }]}>
+            Xem trạm đo ESP32 & Biểu đồ 24h của ao này
+          </Text>
+          <MaterialIcons name="chevron-right" size={20} color={colors.muted} />
+        </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
   );
@@ -453,454 +391,210 @@ export const PondDetailScreen: React.FC = () => {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.canvas,
   },
-  topHeader: {
-    height: 56,
-    backgroundColor: colors.primaryContainer,
-    paddingHorizontal: 12,
+  topBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-  },
-  topHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    flex: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: colors.card,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    gap: 6,
   },
   iconBtn: {
-    width: 36,
-    height: 36,
+    width: touchTargets.min,
+    height: touchTargets.min,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 8,
+    borderRadius: 24,
   },
-  logoTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
+  pondTitleBtn: {
     flex: 1,
-  },
-  headerTitle: {
-    ...typography.headlineSm,
-    color: colors.onPrimary,
-    flex: 1,
-  },
-  topHeaderRight: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
+    minHeight: touchTargets.min,
   },
-  profileAvatar: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: colors.primary,
+  topTitle: {
+    fontFamily: fontFamily.bold,
+    color: colors.ink,
+    flexShrink: 1,
+  },
+  headerBadge: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: 4,
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: radii.pill,
   },
-  scrollContainer: {
+  badgeWarn: {
+    backgroundColor: colors.warnBg,
+  },
+  badgeDanger: {
+    backgroundColor: colors.dangerBg,
+  },
+  headerBadgeText: {
+    fontFamily: fontFamily.semiBold,
+    fontSize: 12,
+  },
+  scroll: {
     flex: 1,
-    backgroundColor: colors.surface,
   },
   scrollContent: {
-    paddingHorizontal: 12,
-    paddingTop: 12,
-    paddingBottom: 28,
-    gap: 12,
+    padding: 16,
+    gap: 14,
+    paddingBottom: 32,
+    maxWidth: 640,
+    width: '100%',
+    alignSelf: 'center',
   },
-  contextCard: {
-    backgroundColor: colors.surfaceContainerLowest,
-    borderRadius: 12,
-    padding: 12,
-    gap: 10,
-    borderWidth: 1,
-    borderColor: colors.outlineVariant,
+  cropTitle: {
+    fontFamily: fontFamily.bold,
+    color: colors.ink,
   },
-  contextTopRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-  },
-  pondTitleGroup: {
-    flex: 1,
-  },
-  pondNameRow: {
+  deviceLine: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 6,
     gap: 8,
-    flexWrap: 'wrap',
   },
-  pondTitle: {
-    ...typography.headlineLg,
-    color: colors.onSurface,
-    fontWeight: '700',
-  },
-  activeBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: colors.secondaryContainer,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 12,
-  },
-  activeDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: colors.secondary,
-  },
-  activeBadgeText: {
-    ...typography.labelSm,
-    color: colors.onSecondaryContainer,
-    fontWeight: '700',
-  },
-  locationRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginTop: 2,
-  },
-  locationText: {
-    ...typography.bodySm,
-    color: colors.onSurfaceVariant,
-  },
-  contextActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  smallActionBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 8,
-    backgroundColor: colors.surfaceContainer,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  rotating: {
-    opacity: 0.6,
-  },
-  healthStrip: {
-    backgroundColor: colors.surfaceContainerLow,
-    borderRadius: 8,
-    padding: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  healthStripLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+  deviceMeta: {
+    fontFamily: fontFamily.regular,
+    color: colors.muted,
     flex: 1,
-  },
-  sensorIconBox: {
-    width: 28,
-    height: 28,
-    borderRadius: 6,
-    backgroundColor: 'rgba(0, 21, 47, 0.1)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  healthStripLabel: {
-    ...typography.labelSm,
-    fontSize: 10,
-    color: colors.onSurfaceVariant,
-    textTransform: 'uppercase',
-  },
-  healthStripVal: {
-    ...typography.bodySm,
-    fontWeight: '500',
-    color: colors.onSurface,
-  },
-  healthStripRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  linkDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: colors.secondary,
-  },
-  linkQualityText: {
-    ...typography.labelSm,
-    color: colors.secondary,
-    fontWeight: '700',
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 2,
-  },
-  sectionHeaderTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  sectionTitle: {
-    ...typography.headlineSm,
-    color: colors.onSurface,
-    textTransform: 'uppercase',
-  },
-  nodesBadge: {
-    backgroundColor: colors.surfaceContainer,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  nodesBadgeText: {
-    ...typography.labelSm,
-    color: colors.onSurfaceVariant,
+    fontVariant: ['tabular-nums'],
   },
   sensorGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginHorizontal: -4,
-  },
-  sensorGridCol: {
-    width: '50%',
-    paddingHorizontal: 4,
-  },
-  alertsCard: {
-    backgroundColor: colors.surfaceContainerLowest,
-    borderRadius: 12,
-    padding: 12,
     gap: 10,
-    borderWidth: 1,
-    borderColor: colors.outlineVariant,
   },
-  alertsHeader: {
+  sensorRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    gap: 10,
+  },
+  sensorSpacer: {
+    flex: 1,
+  },
+  testKitCard: {
+    gap: 10,
+  },
+  testKitHeader: {
+    flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 8,
   },
-  alertsTitleRow: {
+  testKitTitle: {
+    fontFamily: fontFamily.bold,
+    color: colors.ink,
+    flex: 1,
+  },
+  testKitTime: {
+    fontFamily: fontFamily.regular,
+    color: colors.muted,
+    fontVariant: ['tabular-nums'],
+  },
+  testKitBadges: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  kitPill: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 6,
-  },
-  alertsTitle: {
-    ...typography.headlineSm,
-    color: colors.onSurface,
-  },
-  alertCountBadge: {
-    backgroundColor: colors.errorContainer,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 12,
-  },
-  alertCountText: {
-    ...typography.labelSm,
-    color: colors.onErrorContainer,
-    fontWeight: '600',
-  },
-  alertsList: {
-    gap: 10,
-  },
-  alertItem: {
-    backgroundColor: 'rgba(255, 218, 214, 0.2)',
-    borderColor: 'rgba(186, 26, 26, 0.3)',
-    borderWidth: 1,
-    borderRadius: 8,
-    padding: 10,
-    gap: 8,
-  },
-  resolvedOpacity: {
-    opacity: 0.6,
-  },
-  alertItemHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
-  },
-  alertIconBoxRed: {
-    width: 32,
-    height: 32,
-    borderRadius: 6,
-    backgroundColor: colors.errorContainer,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 2,
-  },
-  alertItemContent: {
-    flex: 1,
-  },
-  alertBadgeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  alertRedTag: {
-    ...typography.labelSm,
-    fontSize: 10,
-    color: colors.error,
-    fontWeight: '700',
-  },
-  alertValueHighlight: {
-    ...typography.labelSm,
-    fontSize: 10,
-    color: colors.error,
-    fontWeight: '700',
-  },
-  alertTimeTag: {
-    ...typography.labelSm,
-    fontSize: 10,
-    color: colors.onSurfaceVariant,
-  },
-  alertMainText: {
-    ...typography.bodySm,
-    fontWeight: '600',
-    color: colors.onSurface,
-    marginTop: 2,
-  },
-  alertSubText: {
-    ...typography.labelSm,
-    fontSize: 11,
-    color: colors.onSurfaceVariant,
-    marginTop: 2,
-  },
-  alertItemActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingTop: 4,
-  },
-  resolveBtn: {
-    flex: 1,
-    paddingVertical: 8,
-    paddingHorizontal: 8,
-    backgroundColor: colors.error,
-    borderRadius: 6,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-  },
-  resolvedBtnActive: {
-    backgroundColor: colors.secondary,
-  },
-  resolveBtnText: {
-    ...typography.labelSm,
-    color: colors.onError,
-    fontWeight: '600',
-  },
-  aeratorBtn: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    backgroundColor: colors.surfaceContainer,
-    borderRadius: 6,
-  },
-  aeratorBtnActive: {
-    backgroundColor: colors.secondaryContainer,
-  },
-  aeratorBtnText: {
-    ...typography.labelSm,
-    color: colors.onSurface,
-    fontWeight: '600',
-  },
-  pingSensorBtn: {
-    flex: 1,
-    paddingVertical: 8,
-    paddingHorizontal: 8,
-    backgroundColor: colors.primaryContainer,
-    borderRadius: 6,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-  },
-  pingSuccessBtn: {
-    backgroundColor: colors.secondary,
-  },
-  pingSensorText: {
-    ...typography.labelSm,
-    color: colors.onPrimary,
-    fontWeight: '600',
-  },
-  ackSecondaryBtn: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    backgroundColor: colors.surfaceContainer,
-    borderRadius: 6,
-  },
-  ackSecondaryText: {
-    ...typography.labelSm,
-    color: colors.onSurfaceVariant,
-    fontWeight: '600',
-  },
-  infoItem: {
-    backgroundColor: colors.surfaceContainerLow,
-    borderRadius: 8,
-    padding: 10,
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
-  },
-  infoIconBox: {
-    width: 32,
-    height: 32,
-    borderRadius: 6,
-    backgroundColor: colors.secondaryContainer,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 2,
-  },
-  infoGreenTag: {
-    ...typography.labelSm,
-    fontSize: 10,
-    color: colors.secondary,
-    fontWeight: '700',
-  },
-  infoBatteryText: {
-    ...typography.labelSm,
-    fontSize: 10,
-    color: colors.secondary,
-    fontWeight: '600',
-  },
-  bottomActionsCol: {
-    gap: 8,
-    marginTop: 4,
-  },
-  runDiagBtn: {
-    width: '100%',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    backgroundColor: colors.primary,
-    borderRadius: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  diagPassedBtn: {
-    backgroundColor: colors.secondary,
-  },
-  runDiagText: {
-    ...typography.headlineSm,
-    color: colors.onPrimary,
-  },
-  historyCurvesBtn: {
-    width: '100%',
     paddingVertical: 10,
-    paddingHorizontal: 16,
-    backgroundColor: colors.surfaceContainerLowest,
-    borderRadius: 12,
+    paddingHorizontal: 10,
+    borderRadius: radii.control,
+    borderWidth: 1,
+  },
+  kitPillSafe: {
+    backgroundColor: colors.safeBg,
+    borderColor: colors.safeBorder,
+  },
+  kitPillWarn: {
+    backgroundColor: colors.warnBg,
+    borderColor: colors.warnBorder,
+  },
+  kitPillText: {
+    fontFamily: fontFamily.semiBold,
+    color: colors.ink,
+    fontVariant: ['tabular-nums'],
+  },
+  alertBoxHead: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  alertHeadline: {
+    flex: 1,
+    fontFamily: fontFamily.bold,
+    lineHeight: 20,
+  },
+  recBox: {
+    marginTop: 10,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    backgroundColor: colors.card,
+    borderRadius: radii.control,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 10,
+  },
+  recText: {
+    flex: 1,
+    fontFamily: fontFamily.regular,
+    color: colors.ink,
+    lineHeight: 19,
+  },
+  alertLinkBtn: {
+    alignSelf: 'flex-end',
+    marginTop: 10,
+    minHeight: 36,
+    justifyContent: 'center',
+  },
+  alertLinkText: {
+    fontFamily: fontFamily.bold,
+    color: colors.primaryDark,
+  },
+  bottomActions: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  halfBtn: {
+    flex: 1,
+  },
+  deviceLinkCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
+    gap: 10,
+    backgroundColor: colors.card,
     borderWidth: 1,
-    borderColor: colors.outlineVariant,
+    borderColor: colors.border,
+    borderRadius: radii.control,
+    paddingHorizontal: 14,
+    minHeight: touchTargets.cta,
   },
-  historyCurvesText: {
-    ...typography.headlineSm,
-    color: colors.primary,
+  deviceLinkText: {
+    flex: 1,
+    fontFamily: fontFamily.semiBold,
+    color: colors.ink,
+  },
+  emptyWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    padding: 24,
+  },
+  emptyText: {
+    fontFamily: fontFamily.medium,
+    color: colors.muted,
   },
 });

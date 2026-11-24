@@ -1,301 +1,299 @@
 import React from 'react';
-import { StyleSheet, Text, View, TouchableOpacity } from 'react-native';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { colors } from '../../constants/colors';
-import { typography } from '../../constants/typography';
+import { radii, shadows } from '../../constants/theme';
+import { fontFamily } from '../../constants/typography';
 import { PondItem } from '../../store/slices/pondSlice';
+import { SafeRangeBar, StatusDot, useFontScale } from '../ui';
 
 interface PondCardProps {
   item: PondItem;
+  minDo?: number;
+  maxDo?: number;
   onPress?: () => void;
 }
 
-export const PondCard: React.FC<PondCardProps> = ({ item, onPress }) => {
-  const isAlert = item.status === 'ALERT' || item.isAlert;
+function formatRelativeTime(iso?: string | null): string {
+  if (!iso) return 'Chờ đồng bộ cảm biến';
+  const ts = new Date(iso).getTime();
+  if (isNaN(ts)) return 'Chờ đồng bộ';
+  const diffMin = Math.max(0, Math.floor((Date.now() - ts) / 60000));
+  if (diffMin < 1) return 'Vừa cập nhật';
+  if (diffMin < 60) return `Cập nhật ${diffMin} phút trước`;
+  const diffHours = Math.floor(diffMin / 60);
+  if (diffHours < 24) return `Cập nhật ${diffHours} giờ trước`;
+  return new Date(iso).toLocaleDateString('vi-VN');
+}
 
-  const stripColor = isAlert ? colors.onTertiaryContainer : colors.secondary;
+function fmtMetric(val: number | null, decimals = 1): string {
+  if (val === null || val === undefined || isNaN(val)) return '--';
+  return val.toFixed(decimals).replace('.', ',');
+}
+
+export const PondCard: React.FC<PondCardProps> = ({
+  item,
+  minDo = 4.0,
+  maxDo = 8.0,
+  onPress,
+}) => {
+  const { fs } = useFontScale();
+
+  const isCritical = item.status === 'CRITICAL';
+  const isWarning = item.status === 'WARNING';
+  const isOffline = item.status === 'OFFLINE' || item.status === 'EMPTY';
+
+  const cardBg = isCritical
+    ? colors.dangerBg
+    : isWarning
+    ? colors.warnBg
+    : colors.card;
+
+  const borderColor = isCritical
+    ? colors.dangerBorder
+    : isWarning
+    ? colors.warnBorder
+    : colors.border;
+
+  const dotTone = isCritical
+    ? 'danger'
+    : isWarning
+    ? 'warning'
+    : isOffline
+    ? 'offline'
+    : 'safe';
+
+  const doAbnormal = item.doValue !== null && (item.doValue < minDo || item.doValue > maxDo);
+  const phAbnormal = item.ph !== null && (item.ph < 7.0 || item.ph > 8.5);
+  const tempAbnormal = item.temp !== null && (item.temp < 26 || item.temp > 32);
+
+  const metaParts: string[] = [];
+  if (item.shrimpSpecies) metaParts.push(item.shrimpSpecies);
+  if (item.docDays !== null) metaParts.push(`DOC ${item.docDays} ngày`);
+  else metaParts.push(`${item.areaM2} m²`);
+  metaParts.push(formatRelativeTime(item.recordedAt));
 
   return (
     <TouchableOpacity
-      activeOpacity={0.8}
-      style={styles.cardContainer}
+      activeOpacity={0.85}
       onPress={onPress}
+      style={[
+        styles.card,
+        {
+          backgroundColor: cardBg,
+          borderColor,
+          borderWidth: isCritical || isWarning ? 1.5 : 1,
+        },
+        shadows.card,
+      ]}
     >
-      {/* Left indicator strip */}
-      <View style={[styles.leftStrip, { backgroundColor: stripColor }]} />
+      <View style={styles.headerRow}>
+        <View style={styles.titleWrap}>
+          <Text style={[styles.pondName, { fontSize: fs(17) }]} numberOfLines={1}>
+            {item.name}
+          </Text>
+          <StatusDot tone={dotTone} size={9} />
+        </View>
+        <MaterialIcons name="chevron-right" size={22} color={colors.muted} />
+      </View>
 
-      <View style={styles.cardContent}>
-        {/* Main Line: Identity (Left) & Status Badge + Arrow (Right) */}
-        <View style={styles.headerRow}>
-          <Text style={styles.nameVi}>{item.nameVi}</Text>
+      <Text style={[styles.metaText, { fontSize: fs(12) }]} numberOfLines={1}>
+        {metaParts.join(' · ')}
+      </Text>
 
-          <View style={styles.rightGroup}>
-            {/* Status badge: CẢNH BÁO | AO TRỐNG | ĐANG NUÔI */}
-            {isAlert ? (
-              <View style={styles.alertStatusBadge}>
-                <View style={styles.alertDot} />
-                <Text style={styles.alertStatusText}>CẢNH BÁO</Text>
-              </View>
-            ) : item.status === 'EMPTY' || item.status === 'HARVESTED' ? (
-              <View style={styles.emptyStatusBadge}>
-                <View style={styles.emptyDot} />
-                <Text style={styles.emptyStatusText}>AO TRỐNG</Text>
-              </View>
-            ) : (
-              <View style={styles.activeStatusBadge}>
-                <View style={styles.activeDot} />
-                <Text style={styles.activeStatusText}>ĐANG NUÔI</Text>
-              </View>
-            )}
-
-            <MaterialIcons name="chevron-right" size={20} color={colors.onSurfaceVariant} />
+      <View style={styles.metricsPanel}>
+        <View style={styles.metricCol}>
+          <Text style={[styles.metricLabel, { fontSize: fs(11) }]}>Oxy (DO)</Text>
+          <View style={styles.valueLine}>
+            <Text
+              style={[
+                styles.metricValue,
+                {
+                  fontSize: fs(19),
+                  color: doAbnormal
+                    ? isCritical
+                      ? colors.dangerText
+                      : colors.warnText
+                    : colors.ink,
+                },
+              ]}
+            >
+              {fmtMetric(item.doValue, 1)}
+            </Text>
+            <Text style={[styles.unitText, { fontSize: fs(11) }]}>mg/L</Text>
           </View>
         </View>
 
-        {/* Telemetry Data Strip (Horizontal 4 Columns) */}
-        <View style={styles.metricsGrid}>
-          {/* Column 1: Temp */}
-          <View style={styles.metricItem}>
-            <Text style={styles.metricLabel}>NHIỆT ĐỘ</Text>
-            <View style={styles.valueRow}>
-              <Text style={styles.metricValue}>{item.temp}</Text>
-              <Text style={styles.metricUnit}>°C</Text>
-            </View>
-          </View>
+        <View style={styles.colDivider} />
 
-          {/* Column 2: DO */}
-          <View style={styles.metricItem}>
-            <Text style={styles.metricLabel}>DO</Text>
-            <View style={styles.valueRow}>
-              <Text
-                style={[
-                  styles.metricValue,
-                  isAlert ? styles.doValueAlert : styles.doValueActive,
-                ]}
-              >
-                {item.doValue}
-              </Text>
-              <Text style={styles.metricUnit}>mg/L</Text>
-            </View>
-          </View>
-
-          {/* Column 3: Feed */}
-          <View style={styles.metricItem}>
-            <Text style={styles.metricLabel}>FEED</Text>
-            <View style={styles.valueRow}>
-              <Text style={styles.metricValue}>{item.feedKgPerDay}</Text>
-              <Text style={styles.metricUnit}>kg/d</Text>
-            </View>
-          </View>
-
-          {/* Column 4: DOC */}
-          <View style={styles.metricItem}>
-            <Text style={styles.metricLabel}>DOC</Text>
-            <View style={styles.valueRow}>
-              <Text style={[styles.metricValue, styles.boldValue]}>{item.docDays}</Text>
-              <Text style={styles.metricUnit}>Days</Text>
-            </View>
+        <View style={styles.metricCol}>
+          <Text style={[styles.metricLabel, { fontSize: fs(11) }]}>Độ pH</Text>
+          <View style={styles.valueLine}>
+            <Text
+              style={[
+                styles.metricValue,
+                {
+                  fontSize: fs(19),
+                  color: phAbnormal ? colors.warnText : colors.ink,
+                },
+              ]}
+            >
+              {fmtMetric(item.ph, 1)}
+            </Text>
           </View>
         </View>
+
+        <View style={styles.colDivider} />
+
+        <View style={styles.metricCol}>
+          <Text style={[styles.metricLabel, { fontSize: fs(11) }]}>Nhiệt độ</Text>
+          <View style={styles.valueLine}>
+            <Text
+              style={[
+                styles.metricValue,
+                {
+                  fontSize: fs(19),
+                  color: tempAbnormal ? colors.warnText : colors.ink,
+                },
+              ]}
+            >
+              {fmtMetric(item.temp, 1)}
+            </Text>
+            <Text style={[styles.unitText, { fontSize: fs(11) }]}>°C</Text>
+          </View>
+        </View>
+      </View>
+
+      <SafeRangeBar
+        value={item.doValue}
+        minSafe={minDo}
+        maxSafe={maxDo}
+        scaleMin={0}
+        scaleMax={10}
+        severity={
+          item.doValue === null
+            ? 'offline'
+            : isCritical && doAbnormal
+            ? 'danger'
+            : doAbnormal
+            ? 'warning'
+            : 'safe'
+        }
+        height={5}
+      />
+
+      <View style={styles.footerRow}>
+        <Text
+          style={[
+            styles.footerLeft,
+            {
+              fontSize: fs(11),
+              color:
+                item.status === 'EMPTY'
+                  ? colors.muted
+                  : item.status === 'OFFLINE'
+                  ? colors.muted
+                  : doAbnormal
+                  ? isCritical
+                    ? colors.dangerText
+                    : colors.warnText
+                  : colors.safeText,
+            },
+          ]}
+        >
+          {item.status === 'EMPTY'
+            ? 'Ao đang trống / nghỉ vụ'
+            : item.status === 'OFFLINE'
+            ? 'Chưa có tín hiệu cảm biến'
+            : doAbnormal
+            ? `DO hiện tại: ${fmtMetric(item.doValue, 1)} mg/L`
+            : 'Các chỉ số ổn định'}
+        </Text>
+        <Text style={[styles.footerRight, { fontSize: fs(11) }]}>
+          Ngưỡng DO ≥ {minDo.toFixed(1).replace('.', ',')} mg/L
+        </Text>
       </View>
     </TouchableOpacity>
   );
 };
 
 const styles = StyleSheet.create({
-  cardContainer: {
-    backgroundColor: colors.surfaceContainerLowest,
-    borderRadius: 12,
-    marginBottom: 8,
-    overflow: 'hidden',
-    flexDirection: 'row',
-    borderWidth: 1,
-    borderColor: colors.outlineVariant,
-  },
-  leftStrip: {
-    width: 5,
-  },
-  cardContent: {
-    flex: 1,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
+  card: {
+    borderRadius: radii.card,
+    padding: 16,
     gap: 8,
+    marginBottom: 12,
   },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  rightGroup: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  identityGroup: {
+  titleWrap: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
-  nameVi: {
-    ...typography.headlineSm,
-    fontWeight: '700',
-    color: colors.onSurface,
+  pondName: {
+    fontFamily: fontFamily.bold,
+    color: colors.ink,
+    flexShrink: 1,
   },
-  nameEn: {
-    ...typography.labelSm,
-    color: colors.onSurfaceVariant,
+  metaText: {
+    fontFamily: fontFamily.regular,
+    color: colors.muted,
   },
-  activeStatusBadge: {
+  metricsPanel: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(134, 242, 228, 0.3)',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
+    backgroundColor: colors.card,
+    borderRadius: radii.control,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginTop: 2,
   },
-  activeDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: colors.secondary,
-  },
-  activeStatusText: {
-    ...typography.labelSm,
-    color: colors.onSecondaryContainer,
-    fontWeight: '600',
-  },
-  alertStatusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: colors.tertiaryFixed,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  alertDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: colors.onTertiaryContainer,
-  },
-  alertStatusText: {
-    ...typography.labelSm,
-    color: colors.onTertiaryFixed,
-    fontWeight: '600',
-  },
-  harvestedStatusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: colors.surfaceContainerHigh,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  harvestedDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: colors.tertiary,
-  },
-  harvestedStatusText: {
-    ...typography.labelSm,
-    color: colors.onSurface,
-    fontWeight: '600',
-  },
-  emptyStatusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: colors.surfaceContainerLow,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  emptyDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: colors.outline,
-  },
-  emptyStatusText: {
-    ...typography.labelSm,
-    color: colors.onSurfaceVariant,
-    fontWeight: '600',
-  },
-  healthGroup: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  normalHealthBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: colors.surfaceContainerLow,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  normalHealthText: {
-    ...typography.labelSm,
-    color: colors.onSurfaceVariant,
-  },
-  alertHealthBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(255, 218, 214, 0.6)',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  alertHealthText: {
-    ...typography.labelSm,
-    color: colors.onErrorContainer,
-    fontWeight: '600',
-  },
-  metricsGrid: {
-    flexDirection: 'row',
-    backgroundColor: 'rgba(242, 243, 255, 0.7)',
-    borderRadius: 8,
-    padding: 8,
-    justifyContent: 'space-between',
-  },
-  metricItem: {
+  metricCol: {
     flex: 1,
-    flexDirection: 'column',
-  },
-  metricLabel: {
-    ...typography.labelSm,
-    color: colors.onSurfaceVariant,
-    fontSize: 10,
-  },
-  valueRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
     gap: 2,
   },
+  colDivider: {
+    width: 1,
+    height: 30,
+    backgroundColor: colors.border,
+    marginHorizontal: 8,
+  },
+  metricLabel: {
+    fontFamily: fontFamily.medium,
+    color: colors.muted,
+  },
+  valueLine: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 3,
+  },
   metricValue: {
-    ...typography.telemetryValueMd,
-    color: colors.onSurface,
+    fontFamily: fontFamily.bold,
+    fontVariant: ['tabular-nums'],
   },
-  boldValue: {
-    fontWeight: '700',
+  unitText: {
+    fontFamily: fontFamily.medium,
+    color: colors.muted,
   },
-  doValueActive: {
-    color: colors.secondary,
-    fontWeight: '700',
+  footerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
   },
-  doValueAlert: {
-    color: colors.onTertiaryContainer,
-    fontWeight: '700',
+  footerLeft: {
+    fontFamily: fontFamily.semiBold,
   },
-  metricUnit: {
-    ...typography.labelSm,
-    color: colors.onSurfaceVariant,
-    fontSize: 10,
+  footerRight: {
+    fontFamily: fontFamily.regular,
+    color: colors.muted,
+    fontVariant: ['tabular-nums'],
   },
 });

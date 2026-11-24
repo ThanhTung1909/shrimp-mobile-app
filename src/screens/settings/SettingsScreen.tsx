@@ -1,297 +1,394 @@
-import React, { useState } from 'react';
-import {
-  StyleSheet,
-  Text,
-  View,
-  SafeAreaView,
-  TouchableOpacity,
-  ScrollView,
-  StatusBar,
-  Alert,
-} from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { colors } from '../../constants/colors';
-import { typography } from '../../constants/typography';
+import { radii, touchTargets } from '../../constants/theme';
+import { fontFamily } from '../../constants/typography';
+import { Role } from '../../services/authApi';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
-import { logoutThunk } from '../../store/slices/authSlice';
-import { ProfileScreen } from './ProfileScreen';
-import { ChangePasswordScreen } from '../auth/ChangePasswordScreen';
+import { fetchProfileThunk } from '../../store/slices/userSlice';
+import { toggleLargeTextMode } from '../../store/slices/uiSlice';
+import { AquaToggleSwitch, DaylightCard, useFontScale } from '../../components/ui';
+import { ChangePasswordModal } from '../../components/modals/ChangePasswordModal';
+import { LogoutConfirmModal } from '../../components/modals/LogoutConfirmModal';
+
+function getInitials(name: string): string {
+  if (!name?.trim()) return 'AS';
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+function getRoleLabel(role: Role | null): string {
+  if (role === Role.ADMIN) return 'Quản trị viên hệ thống';
+  if (role === Role.MANAGER) return 'Quản lý trại nuôi';
+  return 'Kỹ thuật viên / Nông dân';
+}
 
 export const SettingsScreen: React.FC = () => {
+  const navigation = useNavigation<any>();
   const dispatch = useAppDispatch();
+  const { fs, largeTextMode } = useFontScale();
+
   const user = useAppSelector((state) => state.user);
+  const authRole = useAppSelector((state) => state.auth.role);
+  const { selectedPondId, farms } = useAppSelector((state) => state.pond);
 
-  const [activeSubScreen, setActiveSubScreen] = useState<'none' | 'profile' | 'changePassword'>('none');
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
+  const [logoutModalOpen, setLogoutModalOpen] = useState(false);
+  const [logoutDefaultAll, setLogoutDefaultAll] = useState(false);
 
-  const handleLogout = () => {
-    Alert.alert('Đăng xuất', 'Bạn có chắc chắn muốn đăng xuất khỏi ứng dụng nông dân?', [
-      { text: 'Hủy', style: 'cancel' },
-      {
-        text: 'Đăng xuất',
-        style: 'destructive',
-        onPress: () => dispatch(logoutThunk()),
-      },
-    ]);
-  };
+  useEffect(() => {
+    dispatch(fetchProfileThunk());
+  }, [dispatch]);
 
-  if (activeSubScreen === 'profile') {
-    return <ProfileScreen onBack={() => setActiveSubScreen('none')} />;
-  }
-
-  if (activeSubScreen === 'changePassword') {
-    return (
-      <ChangePasswordScreen
-        isForced={false}
-        onCancel={() => setActiveSubScreen('none')}
-        onSuccess={() => setActiveSubScreen('none')}
-      />
-    );
-  }
+  const effectiveRole = user.role || authRole;
+  const farmLabel = farms[0]?.farmName ? ` · ${farms[0].farmName}` : '';
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor={colors.surfaceContainer} />
-
-      {/* Header Bar */}
-      <View style={styles.headerBar}>
-        <MaterialIcons name="settings" size={24} color={colors.primary} />
-        <Text style={styles.headerTitle}>CÀI ĐẶT & TÀI KHOẢN NÔNG DÂN</Text>
+    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      <View style={styles.header}>
+        <Text style={[styles.headerTitle, { fontSize: fs(21) }]}>Cá nhân & Cài đặt</Text>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <View style={styles.mainWrapper}>
-          {/* User Profile Mini Banner */}
-          <TouchableOpacity
-            style={styles.profileBanner}
-            onPress={() => setActiveSubScreen('profile')}
-            activeOpacity={0.8}
-          >
-            <MaterialIcons name="account-circle" size={48} color={colors.primary} />
-            <View style={styles.profileTextWrapper}>
-              <Text style={styles.profileName}>{user.fullName || 'Nông dân nuôi tôm'}</Text>
-              <Text style={styles.profilePhone}>{user.phoneNumber}</Text>
-              <View style={styles.roleBadgeRow}>
-                <View style={styles.roleBadge}>
-                  <Text style={styles.roleBadgeText}>KỸ THUẬT VIÊN / NÔNG DÂN</Text>
-                </View>
-              </View>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        <DaylightCard padding={16} style={styles.identityCard}>
+          <View style={styles.identityRow}>
+            <View style={styles.avatarCircle}>
+              <Text style={styles.avatarText}>{getInitials(user.fullName)}</Text>
             </View>
-            <MaterialIcons name="chevron-right" size={24} color={colors.onSurfaceVariant} />
+            <View style={styles.identityInfo}>
+              <Text style={[styles.userName, { fontSize: fs(18) }]} numberOfLines={1}>
+                {user.fullName || 'Thành viên AquaSense'}
+              </Text>
+              <View style={styles.rolePill}>
+                <Text style={styles.rolePillText}>{getRoleLabel(effectiveRole)}</Text>
+              </View>
+              <Text style={[styles.phoneMeta, { fontSize: fs(13) }]} numberOfLines={1}>
+                {user.phoneNumber || '--'}
+                {farmLabel}
+              </Text>
+            </View>
+          </View>
+
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={() => navigation.navigate('ProfileDetail')}
+            style={styles.editProfileBtn}
+          >
+            <MaterialIcons name="edit" size={18} color={colors.primary} />
+            <Text style={[styles.editProfileText, { fontSize: fs(14) }]}>Chỉnh sửa hồ sơ</Text>
+          </TouchableOpacity>
+        </DaylightCard>
+
+        <Text style={[styles.sectionLabel, { fontSize: fs(12) }]}>
+          CÀI ĐẶT AO NUÔI & THÔNG BÁO
+        </Text>
+        <DaylightCard padding={0}>
+          <TouchableOpacity
+            activeOpacity={0.75}
+            onPress={() =>
+              navigation.navigate('ThresholdsNotifications', {
+                pondId: selectedPondId,
+                initialSection: 'thresholds',
+              })
+            }
+            style={styles.menuRow}
+          >
+            <View style={styles.menuIcon}>
+              <MaterialIcons name="tune" size={20} color={colors.primary} />
+            </View>
+            <View style={styles.menuBody}>
+              <Text style={[styles.menuTitle, { fontSize: fs(15) }]}>
+                Cài đặt ngưỡng an toàn ao nuôi
+              </Text>
+              <Text style={[styles.menuSub, { fontSize: fs(12) }]}>
+                Min/Max DO, pH, Nhiệt độ, Độ mặn từng ao
+              </Text>
+            </View>
+            <MaterialIcons name="chevron-right" size={22} color={colors.muted} />
           </TouchableOpacity>
 
-          {/* Account & Security Section */}
-          <View style={styles.sectionCard}>
-            <Text style={styles.sectionHeader}>TÀI KHOẢN & BẢO MẬT</Text>
+          <View style={styles.divider} />
 
-            <TouchableOpacity
-              style={styles.menuItem}
-              onPress={() => setActiveSubScreen('profile')}
-              activeOpacity={0.7}
-            >
-              <View style={styles.menuItemLeft}>
-                <MaterialIcons name="person" size={20} color={colors.primary} />
-                <Text style={styles.menuItemText}>Hồ sơ cá nhân Nông dân</Text>
-              </View>
-              <MaterialIcons name="chevron-right" size={20} color={colors.outline} />
-            </TouchableOpacity>
-
-            <View style={styles.divider} />
-
-            <TouchableOpacity
-              style={styles.menuItem}
-              onPress={() => setActiveSubScreen('changePassword')}
-              activeOpacity={0.7}
-            >
-              <View style={styles.menuItemLeft}>
-                <MaterialIcons name="lock" size={20} color={colors.primary} />
-                <Text style={styles.menuItemText}>Đổi mật khẩu truy cập</Text>
-              </View>
-              <MaterialIcons name="chevron-right" size={20} color={colors.outline} />
-            </TouchableOpacity>
-          </View>
-
-          {/* Telemetry & Push Notification Section */}
-          <View style={styles.sectionCard}>
-            <Text style={styles.sectionHeader}>THÔNG BÁO & CẢNH BÁO AO TÔM</Text>
-
-            <View style={styles.menuItem}>
-              <View style={styles.menuItemLeft}>
-                <MaterialIcons name="notifications-active" size={20} color={colors.secondary} />
-                <Text style={styles.menuItemText}>Cảnh báo Oxy, pH, Nhiệt độ Khẩn</Text>
-              </View>
-              <Text style={styles.settingValueText}>Đã bật Push</Text>
-            </View>
-
-            <View style={styles.divider} />
-
-            <View style={styles.menuItem}>
-              <View style={styles.menuItemLeft}>
-                <MaterialIcons name="router" size={20} color={colors.onSurfaceVariant} />
-                <Text style={styles.menuItemText}>Đồng bộ dữ liệu Cảm biến Telemetry</Text>
-              </View>
-              <Text style={styles.settingValueText}>Thời gian thực</Text>
-            </View>
-          </View>
-
-          {/* Logout Button */}
           <TouchableOpacity
-            style={styles.logoutBtn}
-            onPress={handleLogout}
-            activeOpacity={0.8}
+            activeOpacity={0.75}
+            onPress={() =>
+              navigation.navigate('ThresholdsNotifications', {
+                pondId: selectedPondId,
+                initialSection: 'notifications',
+              })
+            }
+            style={styles.menuRow}
           >
-            <MaterialIcons name="logout" size={20} color={colors.onErrorContainer} />
-            <Text style={styles.logoutText}>ĐĂNG XUẤT TÀI KHOẢN</Text>
+            <View style={styles.menuIcon}>
+              <MaterialIcons name="notifications-active" size={20} color={colors.primary} />
+            </View>
+            <View style={styles.menuBody}>
+              <Text style={[styles.menuTitle, { fontSize: fs(15) }]}>
+                Kênh nhận cảnh báo
+              </Text>
+              <Text style={[styles.menuSub, { fontSize: fs(12) }]}>
+                Thông báo đẩy (Push FCM), SMS khẩn cấp, Email
+              </Text>
+            </View>
+            <MaterialIcons name="chevron-right" size={22} color={colors.muted} />
+          </TouchableOpacity>
+        </DaylightCard>
+
+        <Text style={[styles.sectionLabel, { fontSize: fs(12) }]}>
+          HIỂN THỊ NGOÀI TRỜI & BẢO MẬT
+        </Text>
+        <DaylightCard padding={0}>
+          <View style={styles.menuRow}>
+            <View style={styles.menuIcon}>
+              <MaterialIcons name="wb-sunny" size={20} color={colors.primary} />
+            </View>
+            <View style={styles.menuBody}>
+              <Text style={[styles.menuTitle, { fontSize: fs(15) }]}>
+                Chế độ chữ lớn dễ đọc (+15%)
+              </Text>
+              <Text style={[styles.menuSub, { fontSize: fs(12) }]}>
+                Phóng to thông số khi quan sát ngoài bờ ao
+              </Text>
+            </View>
+            <AquaToggleSwitch
+              value={largeTextMode}
+              onValueChange={() => dispatch(toggleLargeTextMode())}
+              accessibilityLabel="Bật chế độ chữ lớn"
+            />
+          </View>
+
+          <View style={styles.divider} />
+
+          <TouchableOpacity
+            activeOpacity={0.75}
+            onPress={() => setChangePasswordOpen(true)}
+            style={styles.menuRow}
+          >
+            <View style={styles.menuIcon}>
+              <MaterialIcons name="lock-outline" size={20} color={colors.primary} />
+            </View>
+            <View style={styles.menuBody}>
+              <Text style={[styles.menuTitle, { fontSize: fs(15) }]}>
+                Đổi mật khẩu tài khoản
+              </Text>
+              <Text style={[styles.menuSub, { fontSize: fs(12) }]}>
+                Xác thực qua mã OTP bảo vệ tài khoản
+              </Text>
+            </View>
+            <MaterialIcons name="chevron-right" size={22} color={colors.muted} />
           </TouchableOpacity>
 
-          {/* Footer Info */}
-          <View style={styles.footerInfo}>
-            <Text style={styles.footerText}>PondLogs Farmer Mobile App v2.8.4</Text>
-            <Text style={styles.footerSubText}>Hệ thống Giám sát Đầm tôm thông minh</Text>
-          </View>
-        </View>
+          <View style={styles.divider} />
+
+          <TouchableOpacity
+            activeOpacity={0.75}
+            onPress={() => {
+              setLogoutDefaultAll(true);
+              setLogoutModalOpen(true);
+            }}
+            style={styles.menuRow}
+          >
+            <View style={styles.menuIcon}>
+              <MaterialIcons name="devices" size={20} color={colors.primary} />
+            </View>
+            <View style={styles.menuBody}>
+              <Text style={[styles.menuTitle, { fontSize: fs(15) }]}>
+                Đăng xuất trên thiết bị khác
+              </Text>
+              <Text style={[styles.menuSub, { fontSize: fs(12) }]}>
+                Thu hồi toàn bộ phiên đăng nhập đang hoạt động
+              </Text>
+            </View>
+            <MaterialIcons name="chevron-right" size={22} color={colors.muted} />
+          </TouchableOpacity>
+        </DaylightCard>
+
+        <TouchableOpacity
+          activeOpacity={0.82}
+          onPress={() => {
+            setLogoutDefaultAll(false);
+            setLogoutModalOpen(true);
+          }}
+          style={styles.logoutBtn}
+        >
+          <MaterialIcons name="logout" size={20} color={colors.dangerText} />
+          <Text style={[styles.logoutText, { fontSize: fs(15) }]}>Đăng xuất tài khoản</Text>
+        </TouchableOpacity>
+
+        <Text style={styles.versionText}>AquaSense · Hệ thống giám sát ao tôm</Text>
       </ScrollView>
+
+      <ChangePasswordModal
+        visible={changePasswordOpen}
+        onClose={() => setChangePasswordOpen(false)}
+      />
+
+      <LogoutConfirmModal
+        visible={logoutModalOpen}
+        defaultAllDevices={logoutDefaultAll}
+        onClose={() => setLogoutModalOpen(false)}
+      />
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
+  safeArea: {
     flex: 1,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.canvas,
   },
-  headerBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+  header: {
+    backgroundColor: colors.card,
     paddingHorizontal: 16,
     paddingVertical: 14,
-    backgroundColor: colors.surfaceContainerLowest,
     borderBottomWidth: 1,
-    borderBottomColor: colors.outlineVariant,
+    borderBottomColor: colors.border,
   },
   headerTitle: {
-    ...typography.headlineSm,
-    color: colors.primary,
-    fontWeight: '700',
+    fontFamily: fontFamily.bold,
+    color: colors.ink,
+  },
+  scroll: {
+    flex: 1,
   },
   scrollContent: {
-    paddingVertical: 16,
-    paddingHorizontal: 14,
-  },
-  mainWrapper: {
-    maxWidth: 480,
+    padding: 16,
+    gap: 14,
+    paddingBottom: 32,
+    maxWidth: 640,
     width: '100%',
     alignSelf: 'center',
+  },
+  identityCard: {
     gap: 14,
   },
-  profileBanner: {
-    backgroundColor: colors.surfaceContainerLowest,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: colors.outlineVariant,
-    padding: 14,
+  identityRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 14,
   },
-  profileTextWrapper: {
+  avatarCircle: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarText: {
+    fontFamily: fontFamily.bold,
+    fontSize: 20,
+    color: '#FFFFFF',
+  },
+  identityInfo: {
     flex: 1,
-    gap: 2,
+    gap: 4,
   },
-  profileName: {
-    ...typography.headlineMd,
-    color: colors.primary,
+  userName: {
+    fontFamily: fontFamily.bold,
+    color: colors.ink,
   },
-  profilePhone: {
-    ...typography.bodySm,
-    color: colors.onSurfaceVariant,
-    fontFamily: 'JetBrains Mono',
+  rolePill: {
+    alignSelf: 'flex-start',
+    backgroundColor: colors.primarySoft,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: radii.pill,
   },
-  roleBadgeRow: {
-    flexDirection: 'row',
-    marginTop: 2,
+  rolePillText: {
+    fontFamily: fontFamily.semiBold,
+    fontSize: 12,
+    color: colors.primaryDark,
   },
-  roleBadge: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    backgroundColor: colors.secondary,
+  phoneMeta: {
+    fontFamily: fontFamily.regular,
+    color: colors.muted,
+    fontVariant: ['tabular-nums'],
   },
-  roleBadgeText: {
-    ...typography.labelSm,
-    color: colors.onPrimary,
-    fontWeight: '600',
-  },
-  sectionCard: {
-    backgroundColor: colors.surfaceContainerLowest,
-    borderRadius: 10,
+  editProfileBtn: {
+    minHeight: 46,
+    borderRadius: radii.pill,
     borderWidth: 1,
-    borderColor: colors.outlineVariant,
-    overflow: 'hidden',
-  },
-  sectionHeader: {
-    ...typography.labelSm,
-    color: colors.onSurfaceVariant,
+    borderColor: colors.borderStrong,
     backgroundColor: colors.surfaceContainerLow,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.outlineVariant,
-    fontWeight: '700',
-  },
-  menuItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-  },
-  menuItemLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  menuItemText: {
-    ...typography.bodyMd,
-    color: colors.onSurface,
-  },
-  settingValueText: {
-    ...typography.bodySm,
-    color: colors.secondary,
-    fontWeight: '600',
-  },
-  divider: {
-    height: 1,
-    backgroundColor: colors.surfaceContainerLow,
-    marginHorizontal: 16,
-  },
-  logoutBtn: {
-    backgroundColor: colors.errorContainer,
-    borderWidth: 1,
-    borderColor: colors.onErrorContainer,
-    paddingVertical: 12,
-    borderRadius: 8,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    marginTop: 6,
   },
-  logoutText: {
-    ...typography.headlineSm,
-    color: colors.onErrorContainer,
+  editProfileText: {
+    fontFamily: fontFamily.semiBold,
+    color: colors.primaryDark,
   },
-  footerInfo: {
+  sectionLabel: {
+    fontFamily: fontFamily.bold,
+    color: colors.muted,
+    letterSpacing: 0.4,
+    marginTop: 4,
+    marginBottom: -4,
+  },
+  menuRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    minHeight: touchTargets.min + 12,
+    gap: 12,
+  },
+  menuIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    backgroundColor: colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  menuBody: {
+    flex: 1,
     gap: 2,
   },
-  footerText: {
-    ...typography.labelSm,
-    color: colors.onSurfaceVariant,
+  menuTitle: {
+    fontFamily: fontFamily.semiBold,
+    color: colors.ink,
   },
-  footerSubText: {
-    ...typography.labelSm,
-    color: colors.outline,
+  menuSub: {
+    fontFamily: fontFamily.regular,
+    color: colors.muted,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: colors.border,
+    marginLeft: 64,
+  },
+  logoutBtn: {
+    minHeight: touchTargets.cta,
+    borderRadius: radii.control,
+    backgroundColor: colors.dangerBg,
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 4,
+  },
+  logoutText: {
+    fontFamily: fontFamily.bold,
+    color: colors.dangerText,
+  },
+  versionText: {
+    fontFamily: fontFamily.regular,
+    fontSize: 12,
+    color: colors.muted,
+    textAlign: 'center',
+    marginTop: 4,
   },
 });

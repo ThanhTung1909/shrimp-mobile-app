@@ -1,22 +1,22 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
+  ScrollView,
   StyleSheet,
   Text,
-  View,
-  TouchableOpacity,
   TextInput,
-  ScrollView,
-  SafeAreaView,
-  StatusBar,
-  ActivityIndicator,
-  Alert,
+  TouchableOpacity,
+  View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { colors } from '../../constants/colors';
-import { typography } from '../../constants/typography';
-import { useAppDispatch, useAppSelector } from '../../store/hooks';
-import { updateProfileThunk, fetchProfileThunk } from '../../store/slices/userSlice';
+import { radii, touchTargets } from '../../constants/theme';
+import { fontFamily } from '../../constants/typography';
 import { Gender } from '../../services/authApi';
+import { useAppDispatch, useAppSelector } from '../../store/hooks';
+import { fetchProfileThunk, updateProfileThunk } from '../../store/slices/userSlice';
+import { showToast } from '../../store/slices/uiSlice';
+import { DaylightCard, PrimaryButton, useFontScale } from '../../components/ui';
 
 interface ProfileScreenProps {
   onBack?: () => void;
@@ -24,14 +24,17 @@ interface ProfileScreenProps {
 
 export const ProfileScreen: React.FC<ProfileScreenProps> = ({ onBack }) => {
   const dispatch = useAppDispatch();
+  const { fs } = useFontScale();
   const user = useAppSelector((state) => state.user);
 
-  const [isEditing, setIsEditing] = useState(false);
   const [fullName, setFullName] = useState(user.fullName || '');
   const [email, setEmail] = useState(user.email || '');
   const [gender, setGender] = useState<Gender | ''>(user.gender || '');
-  const [dateOfBirth, setDateOfBirth] = useState(user.dateOfBirth || '');
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [dateOfBirth, setDateOfBirth] = useState(
+    user.dateOfBirth ? String(user.dateOfBirth).split('T')[0] : ''
+  );
+  const [saving, setSaving] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   useEffect(() => {
     dispatch(fetchProfileThunk());
@@ -41,17 +44,22 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ onBack }) => {
     setFullName(user.fullName || '');
     setEmail(user.email || '');
     setGender(user.gender || '');
-    setDateOfBirth(user.dateOfBirth || '');
+    setDateOfBirth(user.dateOfBirth ? String(user.dateOfBirth).split('T')[0] : '');
   }, [user]);
 
-  const handleSaveProfile = async () => {
+  const handleSave = async () => {
+    setErrorMsg(null);
     if (!fullName.trim()) {
-      Alert.alert('Lỗi', 'Họ và tên không được để trống');
+      setErrorMsg('Họ và tên không được để trống.');
+      return;
+    }
+    if (dateOfBirth.trim() && !/^\d{4}-\d{2}-\d{2}$/.test(dateOfBirth.trim())) {
+      setErrorMsg('Ngày sinh phải theo định dạng YYYY-MM-DD.');
       return;
     }
 
-    setIsSubmitting(true);
-    const result = await dispatch(
+    setSaving(true);
+    const res = await dispatch(
       updateProfileThunk({
         fullName: fullName.trim(),
         email: email.trim() || undefined,
@@ -59,233 +67,114 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ onBack }) => {
         dateOfBirth: dateOfBirth.trim() || undefined,
       })
     );
-    setIsSubmitting(false);
+    setSaving(false);
 
-    if (updateProfileThunk.fulfilled.match(result)) {
-      Alert.alert('Thành công', 'Cập nhật thông tin cá nhân thành công!');
-      setIsEditing(false);
+    if (updateProfileThunk.fulfilled.match(res)) {
+      dispatch(showToast({ text: 'Cập nhật hồ sơ cá nhân thành công!', tone: 'safe' }));
+      onBack?.();
     } else {
-      Alert.alert('Lỗi', (result.payload as string) || 'Cập nhật thất bại');
+      setErrorMsg((res.payload as string) || 'Không thể cập nhật thông tin.');
     }
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="dark-content" backgroundColor={colors.surfaceContainer} />
-      {/* Header Bar */}
-      <View style={styles.headerBar}>
-        {onBack ? (
-          <TouchableOpacity onPress={onBack} style={styles.backBtn} activeOpacity={0.7}>
-            <MaterialIcons name="arrow-back" size={24} color={colors.primary} />
-          </TouchableOpacity>
-        ) : (
-          <View style={{ width: 24 }} />
-        )}
-        <Text style={styles.headerTitle}>HỒ SƠ NÔNG DÂN NUÔI TÔM</Text>
-        <TouchableOpacity
-          onPress={() => setIsEditing(!isEditing)}
-          style={styles.editHeaderBtn}
-          activeOpacity={0.7}
-        >
-          <MaterialIcons
-            name={isEditing ? 'close' : 'edit'}
-            size={20}
-            color={colors.primary}
-          />
+    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      <View style={styles.topBar}>
+        <TouchableOpacity onPress={onBack} style={styles.backBtn} accessibilityLabel="Quay lại">
+          <MaterialIcons name="arrow-back" size={24} color={colors.ink} />
         </TouchableOpacity>
+        <Text style={[styles.topTitle, { fontSize: fs(18) }]}>Chỉnh sửa hồ sơ</Text>
+        <View style={{ width: touchTargets.min }} />
       </View>
 
       <ScrollView
-        style={styles.container}
+        style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
-        <View style={styles.mainWrapper}>
-          {/* User Profile Card Header */}
-          <View style={styles.profileCard}>
-            <View style={styles.avatarBox}>
-              <MaterialIcons name="account-circle" size={64} color={colors.primary} />
+        <DaylightCard padding={18} style={styles.card}>
+          {errorMsg ? (
+            <View style={styles.errorBox}>
+              <MaterialIcons name="error-outline" size={18} color={colors.dangerText} />
+              <Text style={styles.errorText}>{errorMsg}</Text>
             </View>
+          ) : null}
 
-            <Text style={styles.userName}>{user.fullName || 'Nông dân nuôi tôm'}</Text>
-
-            {/* Role Badge */}
-            <View style={styles.roleBadge}>
-              <MaterialIcons name="engineering" size={14} color={colors.onPrimary} />
-              <Text style={styles.roleBadgeText}>KỸ THUẬT VIÊN / NÔNG DÂN</Text>
-            </View>
-
-            <View style={styles.phoneBox}>
-              <MaterialIcons name="phone" size={16} color={colors.onSurfaceVariant} />
-              <Text style={styles.phoneText}>{user.phoneNumber}</Text>
+          <View style={styles.field}>
+            <Text style={styles.label}>Số điện thoại đăng nhập (cố định)</Text>
+            <View style={styles.readOnlyBox}>
+              <Text style={styles.readOnlyText}>{user.phoneNumber || '--'}</Text>
             </View>
           </View>
 
-          {/* Detailed Info / Edit Form Card */}
-          <View style={styles.card}>
-            <View style={styles.cardHeader}>
-              <MaterialIcons name="person" size={22} color={colors.primary} />
-              <Text style={styles.cardTitle}>Thông tin Cá nhân</Text>
-            </View>
+          <View style={styles.field}>
+            <Text style={styles.label}>Họ và tên</Text>
+            <TextInput
+              value={fullName}
+              onChangeText={setFullName}
+              placeholder="Nhập họ và tên"
+              placeholderTextColor={colors.subtle}
+              style={[styles.input, { fontSize: fs(15) }]}
+            />
+          </View>
 
-            <View style={styles.cardBody}>
-              {/* Field 1: Full Name */}
-              <View style={styles.fieldContainer}>
-                <Text style={styles.fieldLabel}>HỌ VÀ TÊN NÔNG DÂN</Text>
-                {isEditing ? (
-                  <TextInput
-                    style={styles.input}
-                    value={fullName}
-                    onChangeText={setFullName}
-                    placeholder="Nhập họ và tên"
-                    placeholderTextColor={colors.outline}
-                  />
-                ) : (
-                  <Text style={styles.fieldValue}>{user.fullName || 'Chưa cập nhật'}</Text>
-                )}
-              </View>
+          <View style={styles.field}>
+            <Text style={styles.label}>Email nhận cảnh báo</Text>
+            <TextInput
+              value={email}
+              onChangeText={setEmail}
+              placeholder="email@example.com"
+              placeholderTextColor={colors.subtle}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              style={[styles.input, { fontSize: fs(15) }]}
+            />
+          </View>
 
-              {/* Field 2: Phone Number (Read-only) */}
-              <View style={styles.fieldContainer}>
-                <Text style={styles.fieldLabel}>SỐ ĐIỆN THOẠI ĐĂNG NHẬP (CỐ ĐỊNH)</Text>
-                <Text style={[styles.fieldValue, styles.readOnlyValue]}>{user.phoneNumber}</Text>
-              </View>
-
-              {/* Field 3: Email */}
-              <View style={styles.fieldContainer}>
-                <Text style={styles.fieldLabel}>EMAIL THÔNG BÁO</Text>
-                {isEditing ? (
-                  <TextInput
-                    style={styles.input}
-                    value={email}
-                    onChangeText={setEmail}
-                    placeholder="Ví dụ: nongdan@shrimp.com"
-                    placeholderTextColor={colors.outline}
-                    keyboardType="email-address"
-                    autoCapitalize="none"
-                  />
-                ) : (
-                  <Text style={styles.fieldValue}>{user.email || 'Chưa thiết lập'}</Text>
-                )}
-              </View>
-
-              {/* Field 4: Gender */}
-              <View style={styles.fieldContainer}>
-                <Text style={styles.fieldLabel}>GIỚI TÍNH</Text>
-                {isEditing ? (
-                  <View style={styles.genderRow}>
-                    <TouchableOpacity
-                      style={[
-                        styles.genderBtn,
-                        gender === Gender.MALE && styles.genderBtnActive,
-                      ]}
-                      onPress={() => setGender(Gender.MALE)}
-                    >
-                      <Text
-                        style={[
-                          styles.genderBtnText,
-                          gender === Gender.MALE && styles.genderBtnTextActive,
-                        ]}
-                      >
-                        Nam
-                      </Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      style={[
-                        styles.genderBtn,
-                        gender === Gender.FEMALE && styles.genderBtnActive,
-                      ]}
-                      onPress={() => setGender(Gender.FEMALE)}
-                    >
-                      <Text
-                        style={[
-                          styles.genderBtnText,
-                          gender === Gender.FEMALE && styles.genderBtnTextActive,
-                        ]}
-                      >
-                        Nữ
-                      </Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      style={[
-                        styles.genderBtn,
-                        gender === Gender.OTHER && styles.genderBtnActive,
-                      ]}
-                      onPress={() => setGender(Gender.OTHER)}
-                    >
-                      <Text
-                        style={[
-                          styles.genderBtnText,
-                          gender === Gender.OTHER && styles.genderBtnTextActive,
-                        ]}
-                      >
-                        Khác
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                ) : (
-                  <Text style={styles.fieldValue}>
-                    {user.gender === Gender.MALE
-                      ? 'Nam'
-                      : user.gender === Gender.FEMALE
-                      ? 'Nữ'
-                      : user.gender === Gender.OTHER
-                      ? 'Khác'
-                      : 'Chưa cập nhật'}
-                  </Text>
-                )}
-              </View>
-
-              {/* Field 5: Date of Birth */}
-              <View style={styles.fieldContainer}>
-                <Text style={styles.fieldLabel}>NGÀY SINH (YYYY-MM-DD)</Text>
-                {isEditing ? (
-                  <TextInput
-                    style={styles.input}
-                    value={dateOfBirth}
-                    onChangeText={setDateOfBirth}
-                    placeholder="Ví dụ: 1985-08-15"
-                    placeholderTextColor={colors.outline}
-                  />
-                ) : (
-                  <Text style={styles.fieldValue}>
-                    {user.dateOfBirth
-                      ? String(user.dateOfBirth).split('T')[0]
-                      : 'Chưa cập nhật'}
-                  </Text>
-                )}
-              </View>
-
-              {isEditing && (
-                <View style={styles.actionRow}>
+          <View style={styles.field}>
+            <Text style={styles.label}>Giới tính</Text>
+            <View style={styles.genderRow}>
+              {(
+                [
+                  { key: Gender.MALE, label: 'Nam' },
+                  { key: Gender.FEMALE, label: 'Nữ' },
+                  { key: Gender.OTHER, label: 'Khác' },
+                ] as const
+              ).map((g) => {
+                const active = gender === g.key;
+                return (
                   <TouchableOpacity
-                    style={styles.cancelBtn}
-                    onPress={() => setIsEditing(false)}
+                    key={g.key}
+                    onPress={() => setGender(g.key)}
+                    style={[styles.genderBtn, active && styles.genderBtnActive]}
                   >
-                    <Text style={styles.cancelBtnText}>HỦY BỎ</Text>
+                    <Text style={[styles.genderText, active && styles.genderTextActive]}>
+                      {g.label}
+                    </Text>
                   </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[styles.saveBtn, isSubmitting && styles.saveBtnDisabled]}
-                    onPress={handleSaveProfile}
-                    disabled={isSubmitting}
-                  >
-                    {isSubmitting ? (
-                      <ActivityIndicator size="small" color={colors.onPrimary} />
-                    ) : (
-                      <>
-                        <MaterialIcons name="save" size={18} color={colors.onPrimary} />
-                        <Text style={styles.saveBtnText}>LƯU THÔNG TIN</Text>
-                      </>
-                    )}
-                  </TouchableOpacity>
-                </View>
-              )}
+                );
+              })}
             </View>
           </View>
-        </View>
+
+          <View style={styles.field}>
+            <Text style={styles.label}>Ngày sinh (YYYY-MM-DD)</Text>
+            <TextInput
+              value={dateOfBirth}
+              onChangeText={setDateOfBirth}
+              placeholder="1990-05-20"
+              placeholderTextColor={colors.subtle}
+              style={[styles.input, { fontSize: fs(15) }]}
+            />
+          </View>
+
+          <PrimaryButton
+            title="Lưu hồ sơ cá nhân"
+            iconName="save"
+            loading={saving}
+            onPress={handleSave}
+          />
+        </DaylightCard>
       </ScrollView>
     </SafeAreaView>
   );
@@ -294,135 +183,89 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ onBack }) => {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.canvas,
   },
-  headerBar: {
+  topBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: colors.surfaceContainerLowest,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: colors.card,
     borderBottomWidth: 1,
-    borderBottomColor: colors.outlineVariant,
+    borderBottomColor: colors.border,
   },
   backBtn: {
-    padding: 4,
+    width: touchTargets.min,
+    height: touchTargets.min,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  headerTitle: {
-    ...typography.headlineSm,
-    color: colors.primary,
-    fontWeight: '700',
+  topTitle: {
+    fontFamily: fontFamily.bold,
+    color: colors.ink,
   },
-  editHeaderBtn: {
-    padding: 4,
-  },
-  container: {
+  scroll: {
     flex: 1,
   },
   scrollContent: {
-    paddingVertical: 16,
-    paddingHorizontal: 14,
-  },
-  mainWrapper: {
-    maxWidth: 480,
+    padding: 16,
+    maxWidth: 540,
     width: '100%',
     alignSelf: 'center',
-    gap: 14,
-  },
-  profileCard: {
-    backgroundColor: colors.surfaceContainerLowest,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: colors.outlineVariant,
-    padding: 20,
-    alignItems: 'center',
-    gap: 8,
-  },
-  avatarBox: {
-    marginBottom: 4,
-  },
-  userName: {
-    ...typography.headlineLg,
-    color: colors.primary,
-    fontWeight: '700',
-  },
-  roleBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 4,
-    backgroundColor: colors.secondary,
-  },
-  roleBadgeText: {
-    ...typography.labelSm,
-    color: colors.onPrimary,
-    fontWeight: '600',
-  },
-  phoneBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: 4,
-  },
-  phoneText: {
-    ...typography.bodyMd,
-    color: colors.onSurfaceVariant,
-    fontFamily: 'JetBrains Mono',
   },
   card: {
-    backgroundColor: colors.surfaceContainerLowest,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: colors.outlineVariant,
-    overflow: 'hidden',
+    gap: 14,
   },
-  cardHeader: {
+  errorBox: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: colors.surfaceContainerLow,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.outlineVariant,
+    backgroundColor: colors.dangerBg,
+    borderWidth: 1,
+    borderColor: colors.dangerBorder,
+    borderRadius: radii.control,
+    padding: 12,
   },
-  cardTitle: {
-    ...typography.headlineMd,
-    color: colors.primary,
+  errorText: {
+    flex: 1,
+    fontFamily: fontFamily.medium,
+    fontSize: 13,
+    color: colors.dangerText,
   },
-  cardBody: {
-    padding: 16,
-    gap: 14,
+  field: {
+    gap: 6,
   },
-  fieldContainer: {
-    gap: 4,
+  label: {
+    fontFamily: fontFamily.semiBold,
+    fontSize: 13,
+    color: colors.ink,
   },
-  fieldLabel: {
-    ...typography.labelSm,
-    color: colors.onSurfaceVariant,
-    fontWeight: '600',
+  readOnlyBox: {
+    minHeight: touchTargets.min,
+    borderRadius: radii.control,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceContainer,
+    justifyContent: 'center',
+    paddingHorizontal: 14,
   },
-  fieldValue: {
-    ...typography.bodyMd,
-    color: colors.onSurface,
-    paddingVertical: 4,
-  },
-  readOnlyValue: {
-    color: colors.outline,
-    fontFamily: 'JetBrains Mono',
+  readOnlyText: {
+    fontFamily: fontFamily.semiBold,
+    fontSize: 15,
+    color: colors.muted,
+    fontVariant: ['tabular-nums'],
   },
   input: {
-    backgroundColor: colors.surfaceContainerLow,
+    minHeight: touchTargets.min,
+    borderRadius: radii.control,
     borderWidth: 1,
-    borderColor: colors.outlineVariant,
-    borderRadius: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    ...typography.bodyMd,
-    color: colors.onSurface,
+    borderColor: colors.borderStrong,
+    backgroundColor: colors.surfaceContainerLow,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    fontFamily: fontFamily.regular,
+    color: colors.ink,
   },
   genderRow: {
     flexDirection: 'row',
@@ -430,57 +273,25 @@ const styles = StyleSheet.create({
   },
   genderBtn: {
     flex: 1,
-    paddingVertical: 8,
+    minHeight: touchTargets.min,
+    borderRadius: radii.control,
+    borderWidth: 1,
+    borderColor: colors.border,
     backgroundColor: colors.surfaceContainerLow,
-    borderWidth: 1,
-    borderColor: colors.outlineVariant,
-    borderRadius: 6,
-    alignItems: 'center',
-  },
-  genderBtnActive: {
-    backgroundColor: colors.primaryContainer,
-    borderColor: colors.primary,
-  },
-  genderBtnText: {
-    ...typography.bodySm,
-    color: colors.onSurfaceVariant,
-  },
-  genderBtnTextActive: {
-    color: colors.onPrimaryContainer,
-    fontWeight: '600',
-  },
-  actionRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 8,
-  },
-  cancelBtn: {
-    flex: 1,
-    paddingVertical: 10,
-    borderWidth: 1,
-    borderColor: colors.outlineVariant,
-    borderRadius: 6,
-    alignItems: 'center',
-  },
-  cancelBtnText: {
-    ...typography.headlineSm,
-    color: colors.onSurfaceVariant,
-  },
-  saveBtn: {
-    flex: 2,
-    backgroundColor: colors.primary,
-    paddingVertical: 10,
-    borderRadius: 6,
-    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
   },
-  saveBtnDisabled: {
-    opacity: 0.7,
+  genderBtnActive: {
+    backgroundColor: colors.primarySoft,
+    borderColor: colors.primary,
   },
-  saveBtnText: {
-    ...typography.headlineSm,
-    color: colors.onPrimary,
+  genderText: {
+    fontFamily: fontFamily.medium,
+    fontSize: 14,
+    color: colors.muted,
+  },
+  genderTextActive: {
+    fontFamily: fontFamily.bold,
+    color: colors.primaryDark,
   },
 });
