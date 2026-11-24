@@ -7,6 +7,7 @@ import { fontFamily } from '../constants/typography';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import { dismissCurrentAlert, EmergencyAlert } from '../store/slices/alertSlice';
 import { CenterDialogModal, PrimaryButton, useFontScale } from './ui';
+import { formatAlertMessage } from '../utils/alertFormat';
 
 export interface EmergencyAlertBannerProps {
   onViewAlert?: (alert: EmergencyAlert) => void;
@@ -26,16 +27,6 @@ const METRIC_LABELS: Record<string, { label: string; unit: string }> = {
 };
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-function formatAlertMessage(msg?: string | null): string {
-  if (!msg) return '';
-  return msg
-    .replace(/\bdissolvedOxygen\b/gi, 'Oxy hòa tan (DO)')
-    .replace(/\btemperature\b/gi, 'Nhiệt độ')
-    .replace(/\bsalinity\b/gi, 'Độ mặn')
-    .replace(/\bturbidity\b/gi, 'Độ đục')
-    .replace(/\bwaterLevel\b/gi, 'Mực nước');
-}
 
 export const EmergencyAlertBanner: React.FC<EmergencyAlertBannerProps> = ({ onViewAlert }) => {
   const dispatch = useAppDispatch();

@@ -9,6 +9,7 @@ import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { fetchAlertsThunk, resolveAlertThunk } from '../../store/slices/alertSlice';
 import { showToast } from '../../store/slices/uiSlice';
 import { BottomSheetModal, PrimaryButton, StatusDot, useFontScale } from '../ui';
+import { formatAlertMessage, formatAlertTitle } from '../../utils/alertFormat';
 
 const QUICK_ACTIONS = [
   'Đã bật thêm quạt nước',
@@ -123,7 +124,8 @@ export const ResolveAlertModal: React.FC<ResolveAlertModalProps> = ({
               },
             ]}
           >
-            {alert.message || `${alert.metricName}: ${alert.triggeredValue}`}
+            {formatAlertMessage(alert.message) ||
+              formatAlertTitle(alert.metricName, alert.triggeredValue)}
           </Text>
         </View>
       ) : null}

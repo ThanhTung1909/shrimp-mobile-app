@@ -58,6 +58,22 @@ function extractMetricVal(record: any, key: MetricChartKey): number | null {
   return isNaN(num) ? null : num;
 }
 
+const STATUS_PRIORITY: Record<string, number> = {
+  ONLINE: 0,
+  MAINTENANCE: 1,
+  OFFLINE: 2,
+};
+
+function sortDevicesByPriority(list: DeviceBackend[]): DeviceBackend[] {
+  return [...list].sort((a, b) => {
+    const rankDiff = (STATUS_PRIORITY[a.status] ?? 3) - (STATUS_PRIORITY[b.status] ?? 3);
+    if (rankDiff !== 0) return rankDiff;
+    const ta = a.lastActiveAt ? new Date(a.lastActiveAt).getTime() : 0;
+    const tb = b.lastActiveAt ? new Date(b.lastActiveAt).getTime() : 0;
+    return tb - ta;
+  });
+}
+
 export const DeviceManagerScreen: React.FC = () => {
   const dispatch = useAppDispatch();
   const { fs } = useFontScale();
@@ -92,26 +108,26 @@ export const DeviceManagerScreen: React.FC = () => {
   const getPondName = (d: DeviceBackend): string =>
     d.pond?.pondName || (d.pondId ? pondMap[d.pondId] : '') || 'Chưa gán ao';
 
+  const sortedDevices = useMemo(() => sortDevicesByPriority(devices), [devices]);
+
   const visibleDevices = useMemo(() => {
     if (filterBySelectedPond && selectedPondId) {
-      return devices.filter((d) => d.pondId === selectedPondId);
+      return sortedDevices.filter((d) => d.pondId === selectedPondId);
     }
-    return devices;
-  }, [devices, filterBySelectedPond, selectedPondId]);
+    return sortedDevices;
+  }, [sortedDevices, filterBySelectedPond, selectedPondId]);
 
   const activeChartDevice = useMemo(() => {
     if (chartDeviceId && visibleDevices.some((d) => d.deviceId === chartDeviceId)) {
       return visibleDevices.find((d) => d.deviceId === chartDeviceId) || null;
     }
-    const pool = visibleDevices.length > 0 ? visibleDevices : devices;
+    const pool = visibleDevices.length > 0 ? visibleDevices : sortedDevices;
     if (selectedPondId) {
-      const onlinePondMatch = pool.find((d) => d.pondId === selectedPondId && d.status === 'ONLINE');
-      if (onlinePondMatch) return onlinePondMatch;
       const pondMatch = pool.find((d) => d.pondId === selectedPondId);
       if (pondMatch) return pondMatch;
     }
-    return pool.find((d) => d.status === 'ONLINE') || pool[0] || null;
-  }, [chartDeviceId, visibleDevices, devices, selectedPondId]);
+    return pool[0] || null;
+  }, [chartDeviceId, visibleDevices, sortedDevices, selectedPondId]);
 
   useEffect(() => {
     if (activeChartDevice?.deviceId) {
@@ -406,26 +422,14 @@ export const DeviceManagerScreen: React.FC = () => {
                         setChartDeviceId(device.deviceId);
                         setViewTab('chart');
                       }}
-                      style={[
-                        styles.chartPickBtn,
-                        activeChartDevice?.deviceId === device.deviceId && styles.chartPickBtnActive,
-                      ]}
+                      style={styles.chartPickBtn}
                     >
                       <MaterialIcons
                         name="show-chart"
                         size={18}
-                        color={
-                          activeChartDevice?.deviceId === device.deviceId
-                            ? '#FFFFFF'
-                            : colors.primaryDark
-                        }
+                        color={colors.primaryDark}
                       />
-                      <Text
-                        style={[
-                          styles.chartPickText,
-                          activeChartDevice?.deviceId === device.deviceId && { color: '#FFFFFF' },
-                        ]}
-                      >
+                      <Text style={styles.chartPickText}>
                         Biểu đồ
                       </Text>
                     </TouchableOpacity>
@@ -782,10 +786,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-  },
-  chartPickBtnActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
   },
   chartPickText: {
     fontFamily: fontFamily.semiBold,

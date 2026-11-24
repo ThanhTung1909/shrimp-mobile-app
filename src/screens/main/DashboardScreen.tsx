@@ -21,6 +21,7 @@ import { fetchDevicesThunk } from '../../store/slices/deviceSlice';
 import { setPondSelectorOpen } from '../../store/slices/uiSlice';
 import { PondCard } from '../../components/pond/PondCard';
 import { PrimaryButton, StatusDot, useFontScale } from '../../components/ui';
+import { formatAlertMessage } from '../../utils/alertFormat';
 
 type FilterMode = 'ALL' | 'ATTENTION' | 'SAFE' | 'EMPTY';
 
@@ -216,7 +217,8 @@ export const DashboardScreen: React.FC = () => {
                         ? `${firstAttentionPond.temp.toFixed(1).replace('.', ',')}°C`
                         : '--'
                     }`
-                  : activeAlerts[0]?.message || 'Nhấn để xem khuyến nghị xử lý AI'}
+                  : formatAlertMessage(activeAlerts[0]?.message) ||
+                    'Nhấn để xem khuyến nghị xử lý AI'}
               </Text>
             </View>
             <Text style={[styles.urgentAction, { fontSize: fs(13) }]}>Xem ngay →</Text>

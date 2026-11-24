@@ -269,13 +269,21 @@ function computePondHealth(
   return 'SAFE';
 }
 
+const DEVICE_STATUS_RANK: Record<string, number> = {
+  ONLINE: 0,
+  MAINTENANCE: 1,
+  OFFLINE: 2,
+};
+
 function pickPrimaryDevice(devices?: PondBackendResponse['devices']) {
   if (!devices || devices.length === 0) return undefined;
-  return (
-    devices.find((d) => d.status === 'ONLINE') ||
-    devices.find((d) => d.status === 'MAINTENANCE') ||
-    devices[0]
-  );
+  return [...devices].sort((a, b) => {
+    const rankDiff = (DEVICE_STATUS_RANK[a.status] ?? 3) - (DEVICE_STATUS_RANK[b.status] ?? 3);
+    if (rankDiff !== 0) return rankDiff;
+    const ta = a.lastActiveAt ? new Date(a.lastActiveAt).getTime() : 0;
+    const tb = b.lastActiveAt ? new Date(b.lastActiveAt).getTime() : 0;
+    return tb - ta;
+  })[0];
 }
 
 function buildPondItem(

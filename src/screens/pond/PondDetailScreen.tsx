@@ -25,22 +25,13 @@ import { setPondSelectorOpen } from '../../store/slices/uiSlice';
 import { usePondSubscription } from '../../utils/usePondSubscription';
 import { SensorCard } from '../../components/pond/SensorCard';
 import { DaylightCard, PrimaryButton, StatusDot, useFontScale } from '../../components/ui';
+import { formatAlertMessage } from '../../utils/alertFormat';
 
 function fmtTime(iso?: string | null): string {
   if (!iso) return '--';
   const d = new Date(iso);
   if (isNaN(d.getTime())) return '--';
   return d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
-}
-
-function formatAlertMessage(msg?: string | null): string {
-  if (!msg) return '';
-  return msg
-    .replace(/\bdissolvedOxygen\b/gi, 'Oxy hòa tan (DO)')
-    .replace(/\btemperature\b/gi, 'Nhiệt độ')
-    .replace(/\bsalinity\b/gi, 'Độ mặn')
-    .replace(/\bturbidity\b/gi, 'Độ đục')
-    .replace(/\bwaterLevel\b/gi, 'Mực nước');
 }
 
 export const PondDetailScreen: React.FC = () => {

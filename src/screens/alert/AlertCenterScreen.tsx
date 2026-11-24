@@ -18,16 +18,7 @@ import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { fetchAlertsThunk, markAllAlertsAsRead } from '../../store/slices/alertSlice';
 import { PrimaryButton, StatusDot, useFontScale } from '../../components/ui';
 import { ResolveAlertModal } from '../../components/modals/ResolveAlertModal';
-
-const METRIC_TITLES: Record<string, string> = {
-  dissolvedOxygen: 'Oxy hòa tan (DO)',
-  do: 'Oxy hòa tan (DO)',
-  pH: 'Độ pH nước ao',
-  temperature: 'Nhiệt độ nước',
-  salinity: 'Độ mặn',
-  turbidity: 'Độ đục',
-  waterLevel: 'Mực nước',
-};
+import { formatAlertMessage, formatAlertTitle } from '../../utils/alertFormat';
 
 export const AlertCenterScreen: React.FC = () => {
   const dispatch = useAppDispatch();
@@ -203,7 +194,8 @@ export const AlertCenterScreen: React.FC = () => {
               ? '#FCA5A5'
               : '#FCD34D';
 
-            const metricLabel = METRIC_TITLES[alert.metricName] || alert.metricName;
+            const alertTitle = formatAlertTitle(alert.metricName, alert.triggeredValue);
+            const alertDesc = formatAlertMessage(alert.message);
             const timeStr = new Date(alert.createdAt).toLocaleString('vi-VN', {
               hour: '2-digit',
               minute: '2-digit',
@@ -241,11 +233,11 @@ export const AlertCenterScreen: React.FC = () => {
                       },
                     ]}
                   >
-                    {metricLabel}: {String(alert.triggeredValue).replace('.', ',')}
+                    {alertTitle}
                   </Text>
 
-                  {alert.message ? (
-                    <Text style={[styles.alertMsg, { fontSize: fs(13) }]}>{alert.message}</Text>
+                  {alertDesc ? (
+                    <Text style={[styles.alertMsg, { fontSize: fs(13) }]}>{alertDesc}</Text>
                   ) : null}
 
                   {alert.recommendation?.actionSuggestion ? (
