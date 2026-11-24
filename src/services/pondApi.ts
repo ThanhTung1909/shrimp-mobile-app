@@ -1,4 +1,5 @@
 import { apiClient, unwrapApiResponse } from './apiClient';
+import { DeviceStatus } from './deviceApi';
 
 export enum PondStatus {
   ACTIVE = 'ACTIVE',
@@ -12,28 +13,43 @@ export interface DeviceSummary {
   deviceName: string;
   macAddress: string;
   firmwareVersion?: string | null;
-  status: 'ONLINE' | 'OFFLINE';
+  status: DeviceStatus;
   lastActiveAt?: string | null;
 }
 
 export interface ThresholdConfigItem {
   configId: string;
+  id?: string;
   pondId: string;
-  parameterName: string;
-  minValue?: number | null;
-  maxValue?: number | null;
-  unit: string;
+  metricName: string;
+  parameterId?: string;
+  parameterName?: string;
+  minValue: number;
+  maxValue: number;
+  normalMin?: number;
+  normalMax?: number;
+  dangerMin?: number;
+  dangerMax?: number;
+  unit?: string;
+  isActive: boolean;
 }
 
 export interface PondBackendResponse {
   pondId: string;
-  userId: string;
+  userId?: string;
+  farmId?: string | null;
+  farm?: {
+    farmId: string;
+    farmName: string;
+    address?: string | null;
+  } | null;
   pondName: string;
+  location?: string | null;
   areaM2: number;
   depthM: number;
   shrimpDensity: number;
   status: PondStatus;
-  createdAt: string;
+  createdAt?: string;
   devices?: DeviceSummary[];
   thresholdConfigs?: ThresholdConfigItem[];
 }
@@ -54,16 +70,12 @@ export interface FindPondsPaginatedResponse {
 }
 
 export const pondApi = {
-  /**
-   * Lấy danh sách các ao nuôi thuộc về nông dân/kỹ thuật viên (Giải bọc linh hoạt mọi dạng Response)
-   */
   getPonds: async (query?: FindPondsQuery): Promise<FindPondsPaginatedResponse> => {
     const response = await apiClient.get<any>('/ponds', {
-      params: query,
+      params: { limit: 100, ...query },
     });
     const payload = unwrapApiResponse<any>(response.data);
 
-    // Trường hợp 1: Backend trả về mảng trực tiếp [PondBackendResponse, ...]
     if (Array.isArray(payload)) {
       return {
         data: payload,
@@ -74,7 +86,6 @@ export const pondApi = {
       };
     }
 
-    // Trường hợp 2: Backend trả về đối tượng có bọc data mảng { data: [...] }
     if (payload && typeof payload === 'object') {
       const list = Array.isArray(payload.data)
         ? payload.data
@@ -96,16 +107,12 @@ export const pondApi = {
     return { data: [], total: 0, page: 1, limit: 100, totalPages: 1 };
   },
 
-  /**
-   * Lấy thông tin chi tiết một ao nuôi theo ID (Xử lý an toàn khi gặp lỗi 400/404)
-   */
   getPondById: async (pondId: string): Promise<PondBackendResponse | null> => {
     try {
       const response = await apiClient.get<any>(`/ponds/${pondId}`);
       return unwrapApiResponse<PondBackendResponse>(response.data);
     } catch (error: any) {
       if (error.response?.status === 400 || error.response?.status === 404) {
-        console.warn(`⚠️ [Pond API] Không thể lấy chi tiết ao nuôi ID (${pondId}) - Status ${error.response.status}`);
         return null;
       }
       throw error;

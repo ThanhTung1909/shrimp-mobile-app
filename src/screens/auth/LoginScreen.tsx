@@ -1,243 +1,221 @@
 import React, { useState } from 'react';
 import {
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
   StyleSheet,
   Text,
-  View,
-  TouchableOpacity,
   TextInput,
-  ScrollView,
-  SafeAreaView,
-  StatusBar,
-  ActivityIndicator,
+  TouchableOpacity,
+  View,
 } from 'react-native';
-import { MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { MaterialCommunityIcons, MaterialIcons } from '@expo/vector-icons';
 import { colors } from '../../constants/colors';
-import { typography } from '../../constants/typography';
+import { radii, touchTargets } from '../../constants/theme';
+import { fontFamily } from '../../constants/typography';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
-import { setRememberDevice, setUserPhone, loginThunk, clearAuthError } from '../../store/slices/authSlice';
+import {
+  clearAuthError,
+  loginThunk,
+  setRememberDevice,
+  setUserPhone,
+} from '../../store/slices/authSlice';
+import { DaylightCard, PrimaryButton, useFontScale } from '../../components/ui';
+import { OtpForgotModal } from '../../components/modals/OtpForgotModal';
+import {
+  sanitizePhoneInput,
+  VN_PHONE_ERROR_MSG,
+  VN_PHONE_REGEX,
+} from '../../utils/validation';
 
 export const LoginScreen: React.FC = () => {
   const dispatch = useAppDispatch();
-  const { userPhone, rememberDevice, isLoading, error } = useAppSelector((state) => state.auth);
+  const { fs } = useFontScale();
+  const { isLoading, error, userPhone, rememberDevice } = useAppSelector((state) => state.auth);
 
-  const [phone, setPhone] = useState(userPhone || '');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
+  const [otpModalMode, setOtpModalMode] = useState<'forgot' | 'register' | null>(null);
 
-  const handleSignIn = async () => {
+  const handleLogin = async () => {
     setLocalError(null);
     dispatch(clearAuthError());
 
-    const cleanPhone = phone.trim();
-    if (!cleanPhone) {
-      setLocalError('Vui lòng nhập số điện thoại hệ thống');
+    const cleanPhone = userPhone.trim();
+    if (!cleanPhone || !password) {
+      setLocalError('Vui lòng nhập đầy đủ số điện thoại và mật khẩu.');
+      return;
+    }
+    if (!VN_PHONE_REGEX.test(cleanPhone)) {
+      setLocalError(VN_PHONE_ERROR_MSG);
       return;
     }
 
-    if (!password) {
-      setLocalError('Vui lòng nhập mật khẩu truy cập');
-      return;
-    }
-
-    await dispatch(
-      loginThunk({
-        phoneNumber: cleanPhone,
-        password,
-      })
-    );
+    await dispatch(loginThunk({ phoneNumber: cleanPhone, password }));
   };
+
+  const displayError = localError || error;
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="dark-content" backgroundColor={colors.surfaceContainer} />
-      <ScrollView
-        style={styles.container}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        {/* Subtle Ambient Farm Status Ribbon */}
-        <View style={styles.statusRibbon}>
-          <View style={styles.ribbonLeft}>
-            <View style={styles.onlineDot} />
-            <Text style={styles.ribbonText}>NÚT GATEWAY: HOẠT ĐỘNG</Text>
-          </View>
-          <View style={styles.ribbonRight}>
-            <MaterialIcons name="lock" size={14} color={colors.onSurfaceVariant} />
-            <Text style={styles.ribbonText}>BẢO MẬT TLS 1.3</Text>
-          </View>
-        </View>
-
-        <View style={styles.mainWrapper}>
-          {/* Sign In Module Card */}
-          <View style={styles.card}>
-            {/* Top Light Blue Header Container */}
-            <View style={styles.brandHeader}>
-              <View style={styles.brandLogoBox}>
-                <MaterialCommunityIcons name="waves" size={34} color={colors.primary} />
-                <View style={styles.wifiBadge}>
-                  <MaterialIcons name="wifi" size={10} color={colors.onSecondary} />
-                </View>
-              </View>
-              <Text style={styles.brandTitle}>PondLogs</Text>
-              <Text style={styles.brandSubtitle}>
-                Giám sát Telemetry & Quản lý Đầm tôm
-              </Text>
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.heroCard}>
+            <View style={styles.logoBox}>
+              <MaterialCommunityIcons name="waves" size={32} color={colors.primary} />
             </View>
-
-            {/* Sign In Form Body */}
-            <View style={styles.formBody}>
-              {(localError || error) && (
-                <View style={styles.errorBanner}>
-                  <MaterialIcons name="error-outline" size={18} color={colors.error} />
-                  <Text style={styles.errorText}>{localError || error}</Text>
-                </View>
-              )}
-
-              {/* Field: Phone Number */}
-              <View style={styles.fieldContainer}>
-                <View style={styles.labelRow}>
-                  <Text style={styles.fieldLabel}>SỐ ĐIỆN THOẠI HỆ THỐNG</Text>
-                  <View style={styles.ssoBadge}>
-                    <MaterialIcons name="badge" size={12} color={colors.secondary} />
-                    <Text style={styles.ssoBadgeText}>SSO Kỹ thuật</Text>
-                  </View>
-                </View>
-                <View style={styles.inputWrapper}>
-                  <MaterialIcons
-                    name="smartphone"
-                    size={20}
-                    color={colors.onSurfaceVariant}
-                    style={styles.inputIcon}
-                  />
-                  <TextInput
-                    style={styles.input}
-                    value={phone}
-                    onChangeText={setPhone}
-                    placeholder="Ví dụ: 0912345678"
-                    placeholderTextColor={colors.outline}
-                    keyboardType="phone-pad"
-                    autoCapitalize="none"
-                  />
-                </View>
-              </View>
-
-              {/* Field: Password */}
-              <View style={styles.fieldContainer}>
-                <View style={styles.labelRow}>
-                  <Text style={styles.fieldLabel}>MẬT KHẨU TRUY CẬP</Text>
-                  <TouchableOpacity activeOpacity={0.7}>
-                    <Text style={styles.forgotText}>Quên mật khẩu?</Text>
-                  </TouchableOpacity>
-                </View>
-                <View style={styles.inputWrapper}>
-                  <MaterialIcons
-                    name="vpn-key"
-                    size={20}
-                    color={colors.onSurfaceVariant}
-                    style={styles.inputIcon}
-                  />
-                  <TextInput
-                    style={[styles.input, styles.monoInput]}
-                    value={password}
-                    onChangeText={setPassword}
-                    placeholder="Nhập mật khẩu bảo mật"
-                    placeholderTextColor={colors.outline}
-                    secureTextEntry={!showPassword}
-                  />
-                  <TouchableOpacity
-                    onPress={() => setShowPassword(!showPassword)}
-                    style={styles.eyeBtn}
-                    activeOpacity={0.7}
-                  >
-                    <MaterialIcons
-                      name={showPassword ? 'visibility' : 'visibility-off'}
-                      size={18}
-                      color={colors.onSurfaceVariant}
-                    />
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              {/* Checkbox: Remember Device */}
-              <TouchableOpacity
-                style={styles.checkboxRow}
-                activeOpacity={0.8}
-                onPress={() => dispatch(setRememberDevice(!rememberDevice))}
-              >
-                <View style={styles.checkboxOuter}>
-                  {rememberDevice && (
-                    <MaterialIcons name="check" size={14} color={colors.primary} />
-                  )}
-                </View>
-                <Text style={styles.checkboxLabel}>Ghi nhớ thiết bị này trong 30 ngày</Text>
-              </TouchableOpacity>
-
-              {/* Primary Action Button */}
-              <TouchableOpacity
-                style={[styles.signInBtn, isLoading && styles.signInBtnDisabled]}
-                onPress={handleSignIn}
-                activeOpacity={0.9}
-                disabled={isLoading}
-              >
-                {isLoading ? (
-                  <ActivityIndicator size="small" color={colors.onPrimary} />
-                ) : (
-                  <>
-                    <Text style={styles.signInBtnText}>Đăng nhập Trung tâm Telemetry</Text>
-                    <MaterialIcons name="arrow-forward" size={18} color={colors.onPrimary} />
-                  </>
-                )}
-              </TouchableOpacity>
-
-              {/* Industrial Quick Auth Helpers */}
-              <View style={styles.quickAuthRow}>
-                <TouchableOpacity style={styles.quickAuthBtn} activeOpacity={0.7}>
-                  <MaterialIcons name="qr-code-scanner" size={16} color={colors.onSurfaceVariant} />
-                  <Text style={styles.quickAuthText}>Quét mã QR Trạm</Text>
-                </TouchableOpacity>
-                <View style={styles.quickAuthDivider} />
-                <TouchableOpacity style={styles.quickAuthBtn} activeOpacity={0.7}>
-                  <MaterialIcons name="nfc" size={16} color={colors.onSurfaceVariant} />
-                  <Text style={styles.quickAuthText}>Chạm thẻ NFC</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
-
-          {/* Farm Infrastructure Security Note Card */}
-          <View style={styles.securityCard}>
-            <MaterialIcons
-              name="shield"
-              size={18}
-              color={colors.secondary}
-              style={styles.securityIcon}
-            />
-            <Text style={styles.securityText}>
-              Quyền truy cập công nghiệp hạn chế cho kỹ sư trại giống, đầm tôm và trung tâm điều phối. Mọi truy cập không hợp lệ đều được ghi nhận bởi SCADA Gateway #4.
+            <Text style={[styles.brandTitle, { fontSize: fs(28) }]}>AquaSense</Text>
+            <Text style={[styles.brandSub, { fontSize: fs(14) }]}>
+              Đồng hành cùng người nuôi tôm mỗi ngày
             </Text>
           </View>
 
-          {/* Footer Meta */}
-          <View style={styles.footer}>
-            <View style={styles.footerStatusRow}>
-              <View style={styles.footerGreenDot} />
-              <Text style={styles.footerStatusText}>PondLogs Mobile v2.8.4</Text>
-              <Text style={styles.footerDotSeparator}>•</Text>
-              <Text style={styles.footerStatusText}>IoT Gateway Sẵn sàng</Text>
+          <DaylightCard padding={18} style={styles.formCard}>
+            <View style={styles.cardHeader}>
+              <Text style={[styles.cardTitle, { fontSize: fs(19) }]}>Đăng nhập tài khoản</Text>
+              <View style={styles.secureBadge}>
+                <Text style={styles.secureBadgeText}>Bảo mật 2 lớp</Text>
+              </View>
             </View>
-            <View style={styles.footerLinksRow}>
-              <TouchableOpacity activeOpacity={0.7}>
-                <Text style={styles.footerLink}>Tài liệu Hoạt động Offline</Text>
+
+            {displayError ? (
+              <View style={styles.errorBox}>
+                <MaterialIcons name="error-outline" size={18} color={colors.dangerText} />
+                <Text style={[styles.errorText, { fontSize: fs(13) }]}>{displayError}</Text>
+              </View>
+            ) : null}
+
+            <View style={styles.fieldGroup}>
+              <Text style={[styles.label, { fontSize: fs(13) }]}>Số điện thoại</Text>
+              <View style={styles.inputWrap}>
+                <MaterialIcons name="phone" size={20} color={colors.primary} />
+                <TextInput
+                  value={userPhone}
+                  onChangeText={(txt) => dispatch(setUserPhone(sanitizePhoneInput(txt)))}
+                  placeholder="0908123456"
+                  placeholderTextColor={colors.subtle}
+                  keyboardType="phone-pad"
+                  maxLength={10}
+                  autoCapitalize="none"
+                  style={[styles.input, { fontSize: fs(15) }]}
+                />
+              </View>
+            </View>
+
+            <View style={styles.fieldGroup}>
+              <Text style={[styles.label, { fontSize: fs(13) }]}>Mật khẩu</Text>
+              <View style={styles.inputWrap}>
+                <MaterialIcons name="lock-outline" size={20} color={colors.primary} />
+                <TextInput
+                  value={password}
+                  onChangeText={setPassword}
+                  placeholder="Nhập mật khẩu của bạn"
+                  placeholderTextColor={colors.subtle}
+                  secureTextEntry={!showPassword}
+                  style={[styles.input, { fontSize: fs(15) }]}
+                />
+                <TouchableOpacity
+                  onPress={() => setShowPassword(!showPassword)}
+                  style={styles.eyeBtn}
+                  accessibilityLabel="Ẩn/hiện mật khẩu"
+                >
+                  <MaterialIcons
+                    name={showPassword ? 'visibility' : 'visibility-off'}
+                    size={20}
+                    color={colors.muted}
+                  />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <View style={styles.optionsRow}>
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={() => dispatch(setRememberDevice(!rememberDevice))}
+                style={styles.rememberWrap}
+              >
+                <View
+                  style={[
+                    styles.checkbox,
+                    rememberDevice && styles.checkboxChecked,
+                  ]}
+                >
+                  {rememberDevice ? <MaterialIcons name="check" size={15} color="#FFFFFF" /> : null}
+                </View>
+                <Text style={[styles.rememberText, { fontSize: fs(13) }]}>
+                  Ghi nhớ thiết bị này
+                </Text>
               </TouchableOpacity>
-              <Text style={styles.footerDotSeparator}>•</Text>
-              <TouchableOpacity activeOpacity={0.7}>
-                <Text style={styles.footerLink}>Giao thức Quạt nước Khẩn cấp</Text>
+
+              <TouchableOpacity
+                onPress={() => setOtpModalMode('forgot')}
+                style={styles.forgotBtn}
+              >
+                <Text style={[styles.forgotText, { fontSize: fs(13) }]}>Quên mật khẩu?</Text>
               </TouchableOpacity>
             </View>
-          </View>
-        </View>
-      </ScrollView>
+
+            <PrimaryButton
+              title="Đăng nhập"
+              iconName="login"
+              loading={isLoading}
+              onPress={handleLogin}
+            />
+          </DaylightCard>
+
+          <DaylightCard padding={16} style={styles.otpCard}>
+            <View style={styles.otpHeader}>
+              <MaterialIcons name="verified-user" size={20} color={colors.primary} />
+              <Text style={[styles.otpTitle, { fontSize: fs(15) }]}>
+                Xác thực nhanh bằng mã OTP
+              </Text>
+            </View>
+            <Text style={[styles.otpDesc, { fontSize: fs(13) }]}>
+              Dùng khi quên mật khẩu hoặc xác thực số điện thoại để đăng ký tài khoản trại mới.
+            </Text>
+            <PrimaryButton
+              title="Đăng ký tài khoản bằng mã OTP"
+              iconName="sms"
+              variant="secondary"
+              onPress={() => setOtpModalMode('register')}
+            />
+          </DaylightCard>
+
+          <DaylightCard padding={14} style={styles.statusFooterCard}>
+            <View style={styles.pulseBadge}>
+              <MaterialIcons name="sensors" size={20} color={colors.safeText} />
+            </View>
+            <View style={styles.statusFooterTextWrap}>
+              <Text style={[styles.statusFooterTitle, { fontSize: fs(13) }]}>
+                Kết nối trạm đo nước liên tục
+              </Text>
+              <Text style={[styles.statusFooterSub, { fontSize: fs(12) }]} numberOfLines={2}>
+                Sẵn sàng nhận cảnh báo độ mặn, pH và Oxy hòa tan theo thời gian thực.
+              </Text>
+            </View>
+          </DaylightCard>
+
+          <Text style={[styles.copyright, { fontSize: fs(12) }]}>
+            AquaSense Việt Nam · Hỗ trợ kỹ thuật trại nuôi
+          </Text>
+        </ScrollView>
+      </KeyboardAvoidingView>
+
+      <OtpForgotModal
+        visible={otpModalMode !== null}
+        initialMode={otpModalMode || 'forgot'}
+        prefillPhone={userPhone}
+        onClose={() => setOtpModalMode(null)}
+      />
     </SafeAreaView>
   );
 };
@@ -245,283 +223,203 @@ export const LoginScreen: React.FC = () => {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.canvas,
   },
-  container: {
+  flex: {
     flex: 1,
-    backgroundColor: colors.surface,
   },
   scrollContent: {
-    paddingBottom: 24,
-  },
-  statusRibbon: {
+    paddingHorizontal: 16,
+    paddingVertical: 18,
+    gap: 14,
+    maxWidth: 460,
     width: '100%',
-    backgroundColor: colors.surfaceContainer,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    alignSelf: 'center',
   },
-  ribbonLeft: {
-    flexDirection: 'row',
+  heroCard: {
+    backgroundColor: '#E5F5F6',
+    borderRadius: 20,
+    paddingVertical: 22,
+    paddingHorizontal: 16,
     alignItems: 'center',
     gap: 6,
-  },
-  onlineDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.secondary,
-  },
-  ribbonRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  ribbonText: {
-    ...typography.labelSm,
-    color: colors.onSurfaceVariant,
-  },
-  mainWrapper: {
-    paddingHorizontal: 12,
-    paddingVertical: 16,
-    gap: 12,
-    maxWidth: 440,
-    alignSelf: 'center',
-    width: '100%',
-  },
-  card: {
-    backgroundColor: colors.surfaceContainerLowest,
-    borderRadius: 12,
-    overflow: 'hidden',
     borderWidth: 1,
-    borderColor: colors.outlineVariant,
+    borderColor: '#CBE7E9',
   },
-  brandHeader: {
-    backgroundColor: 'rgba(212, 227, 255, 0.4)',
-    paddingHorizontal: 16,
-    paddingTop: 20,
-    paddingBottom: 16,
-    alignItems: 'center',
-  },
-  brandLogoBox: {
-    width: 60,
-    height: 60,
-    borderRadius: 12,
-    backgroundColor: colors.surfaceContainerLowest,
-    padding: 8,
+  logoBox: {
+    width: 56,
+    height: 56,
+    borderRadius: 16,
+    backgroundColor: colors.card,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 8,
-    position: 'relative',
+    marginBottom: 4,
     borderWidth: 1,
-    borderColor: colors.outlineVariant,
-  },
-  wifiBadge: {
-    position: 'absolute',
-    bottom: -4,
-    right: -4,
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: colors.secondary,
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderColor: colors.border,
   },
   brandTitle: {
-    ...typography.headlineXlMobile,
-    fontWeight: '700',
-    color: colors.primary,
+    fontFamily: fontFamily.bold,
+    color: colors.primaryDark,
   },
-  brandSubtitle: {
-    ...typography.bodySm,
-    color: colors.onSurfaceVariant,
-    fontWeight: '500',
-    marginTop: 2,
+  brandSub: {
+    fontFamily: fontFamily.regular,
+    color: colors.muted,
+    textAlign: 'center',
   },
-  formBody: {
-    padding: 16,
+  formCard: {
     gap: 14,
-    backgroundColor: colors.surfaceContainerLowest,
   },
-  errorBanner: {
-    backgroundColor: '#FEE2E2',
-    borderColor: '#FCA5A5',
-    borderWidth: 1,
-    borderRadius: 6,
-    padding: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  errorText: {
-    ...typography.bodySm,
-    color: '#B91C1C',
-    flex: 1,
-  },
-  fieldContainer: {
-    gap: 6,
-  },
-  labelRow: {
+  cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: 8,
   },
-  fieldLabel: {
-    ...typography.labelMd,
-    color: colors.onSurfaceVariant,
-    fontWeight: '600',
+  cardTitle: {
+    fontFamily: fontFamily.bold,
+    color: colors.ink,
   },
-  ssoBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-  },
-  ssoBadgeText: {
-    ...typography.labelSm,
-    color: colors.secondary,
-  },
-  forgotText: {
-    ...typography.labelSm,
-    color: colors.secondary,
-    fontWeight: '500',
-  },
-  inputWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.surfaceContainerLow,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.outlineVariant,
+  secureBadge: {
+    backgroundColor: colors.primarySoft,
     paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: radii.pill,
   },
-  inputIcon: {
-    marginRight: 6,
+  secureBadgeText: {
+    fontFamily: fontFamily.semiBold,
+    fontSize: 11,
+    color: colors.primaryDark,
+  },
+  errorBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: colors.dangerBg,
+    borderWidth: 1,
+    borderColor: colors.dangerBorder,
+    borderRadius: radii.control,
+    padding: 12,
+  },
+  errorText: {
+    flex: 1,
+    fontFamily: fontFamily.medium,
+    color: colors.dangerText,
+  },
+  fieldGroup: {
+    gap: 6,
+  },
+  label: {
+    fontFamily: fontFamily.semiBold,
+    color: colors.ink,
+  },
+  inputWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 50,
+    backgroundColor: colors.primarySoft,
+    borderRadius: radii.control,
+    borderWidth: 1,
+    borderColor: '#CFE5E7',
+    paddingLeft: 14,
+    gap: 10,
   },
   input: {
     flex: 1,
+    fontFamily: fontFamily.medium,
+    color: colors.ink,
     paddingVertical: 10,
-    ...typography.bodyMd,
-    color: colors.onSurface,
-  },
-  monoInput: {
-    ...typography.telemetryValueMd,
+    fontVariant: ['tabular-nums'],
   },
   eyeBtn: {
-    padding: 6,
-  },
-  checkboxRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingVertical: 4,
-  },
-  checkboxOuter: {
-    width: 20,
-    height: 20,
-    borderRadius: 4,
-    backgroundColor: colors.surfaceContainerHigh,
+    width: touchTargets.min,
+    height: touchTargets.min,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  checkboxLabel: {
-    ...typography.bodySm,
-    color: colors.onSurface,
+  optionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
   },
-  signInBtn: {
-    width: '100%',
-    marginTop: 4,
+  rememberWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    minHeight: 40,
+  },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    backgroundColor: colors.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkboxChecked: {
     backgroundColor: colors.primary,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
+  },
+  rememberText: {
+    fontFamily: fontFamily.regular,
+    color: colors.ink,
+  },
+  forgotBtn: {
+    minHeight: 40,
+    justifyContent: 'center',
+  },
+  forgotText: {
+    fontFamily: fontFamily.semiBold,
+    color: colors.primary,
+  },
+  otpCard: {
+    gap: 10,
+  },
+  otpHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
     gap: 8,
   },
-  signInBtnDisabled: {
-    opacity: 0.8,
+  otpTitle: {
+    fontFamily: fontFamily.bold,
+    color: colors.ink,
   },
-  signInBtnText: {
-    ...typography.headlineSm,
-    color: colors.onPrimary,
+  otpDesc: {
+    fontFamily: fontFamily.regular,
+    color: colors.muted,
+    lineHeight: 20,
   },
-  quickAuthRow: {
+  statusFooterCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
     gap: 12,
-    paddingTop: 4,
   },
-  quickAuthBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-  },
-  quickAuthText: {
-    ...typography.labelSm,
-    color: colors.onSurfaceVariant,
-  },
-  quickAuthDivider: {
-    height: 12,
-    width: 1,
-    backgroundColor: colors.outlineVariant,
-  },
-  securityCard: {
-    backgroundColor: colors.surfaceContainerLow,
-    borderRadius: 8,
-    padding: 12,
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
-  },
-  securityIcon: {
-    marginTop: 2,
-  },
-  securityText: {
-    flex: 1,
-    ...typography.bodySm,
-    color: colors.onSurfaceVariant,
-  },
-  footer: {
+  pulseBadge: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#DCFCE7',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
-    paddingTop: 4,
-    paddingBottom: 8,
   },
-  footerStatusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
+  statusFooterTextWrap: {
+    flex: 1,
+    gap: 2,
   },
-  footerGreenDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: colors.secondary,
+  statusFooterTitle: {
+    fontFamily: fontFamily.bold,
+    color: colors.ink,
   },
-  footerStatusText: {
-    ...typography.labelSm,
-    color: colors.onSurfaceVariant,
-    fontWeight: '500',
+  statusFooterSub: {
+    fontFamily: fontFamily.regular,
+    color: colors.muted,
   },
-  footerDotSeparator: {
-    ...typography.labelSm,
-    color: colors.outline,
-  },
-  footerLinksRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  footerLink: {
-    ...typography.labelSm,
-    color: colors.outline,
-    textDecorationLine: 'underline',
+  copyright: {
+    fontFamily: fontFamily.regular,
+    color: colors.muted,
+    textAlign: 'center',
+    marginTop: 4,
+    marginBottom: 8,
   },
 });

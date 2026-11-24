@@ -1,104 +1,99 @@
-import { Platform, TextStyle } from 'react-native';
+import { TextStyle } from 'react-native';
 
-const MONO_FONT = Platform.select({
-  ios: 'Courier New',
-  android: 'monospace',
-  default: 'monospace',
-});
+export const fontFamily = {
+  regular: 'BeVietnamPro_400Regular',
+  medium: 'BeVietnamPro_500Medium',
+  semiBold: 'BeVietnamPro_600SemiBold',
+  bold: 'BeVietnamPro_700Bold',
+};
 
-const SANS_FONT = Platform.select({
-  ios: 'System',
-  android: 'Roboto',
-  default: 'System',
-});
+export const scaleFont = (size: number, largeTextMode: boolean): number => {
+  return largeTextMode ? Math.round(size * 1.15) : size;
+};
+
+export const tabularStyle: TextStyle = {
+  fontVariant: ['tabular-nums'],
+};
 
 export const typography: Record<string, TextStyle> = {
-  headlineXl: {
-    fontFamily: SANS_FONT,
-    fontSize: 32,
-    fontWeight: '600',
-    lineHeight: 40,
-    letterSpacing: -0.64,
-  },
-  headlineXlMobile: {
-    fontFamily: SANS_FONT,
-    fontSize: 24,
-    fontWeight: '600',
-    lineHeight: 32,
-    letterSpacing: -0.24,
+  displayHero: {
+    fontFamily: fontFamily.bold,
+    fontSize: 30,
+    lineHeight: 38,
+    letterSpacing: -0.5,
   },
   headlineLg: {
-    fontFamily: SANS_FONT,
+    fontFamily: fontFamily.bold,
     fontSize: 24,
-    fontWeight: '600',
     lineHeight: 32,
-    letterSpacing: -0.24,
+    letterSpacing: -0.3,
   },
   headlineMd: {
-    fontFamily: SANS_FONT,
+    fontFamily: fontFamily.bold,
     fontSize: 18,
-    fontWeight: '600',
-    lineHeight: 24,
-    letterSpacing: -0.09,
+    lineHeight: 26,
+    letterSpacing: -0.1,
   },
   headlineSm: {
-    fontFamily: SANS_FONT,
+    fontFamily: fontFamily.semiBold,
+    fontSize: 16,
+    lineHeight: 22,
+  },
+  titleLg: {
+    fontFamily: fontFamily.bold,
+    fontSize: 18,
+    lineHeight: 24,
+  },
+  titleMd: {
+    fontFamily: fontFamily.semiBold,
     fontSize: 15,
-    fontWeight: '600',
-    lineHeight: 20,
-    letterSpacing: 0,
+    lineHeight: 21,
+  },
+  titleSm: {
+    fontFamily: fontFamily.semiBold,
+    fontSize: 13,
+    lineHeight: 18,
   },
   bodyLg: {
-    fontFamily: SANS_FONT,
+    fontFamily: fontFamily.regular,
     fontSize: 16,
-    fontWeight: '400',
     lineHeight: 24,
   },
   bodyMd: {
-    fontFamily: SANS_FONT,
+    fontFamily: fontFamily.regular,
     fontSize: 14,
-    fontWeight: '400',
-    lineHeight: 20,
+    lineHeight: 21,
   },
   bodySm: {
-    fontFamily: SANS_FONT,
-    fontSize: 13,
-    fontWeight: '400',
+    fontFamily: fontFamily.regular,
+    fontSize: 12,
     lineHeight: 18,
   },
-  telemetryValueLg: {
-    fontFamily: MONO_FONT,
-    fontSize: 28,
-    fontWeight: '600',
-    lineHeight: 32,
-    letterSpacing: -0.84,
-  },
-  telemetryValueMd: {
-    fontFamily: MONO_FONT,
-    fontSize: 18,
-    fontWeight: '600',
-    lineHeight: 22,
-    letterSpacing: -0.36,
-  },
-  telemetryValueSm: {
-    fontFamily: MONO_FONT,
-    fontSize: 13,
-    fontWeight: '500',
-    lineHeight: 16,
-    letterSpacing: 0,
+  labelLg: {
+    fontFamily: fontFamily.semiBold,
+    fontSize: 14,
+    lineHeight: 18,
   },
   labelMd: {
-    fontFamily: MONO_FONT,
+    fontFamily: fontFamily.semiBold,
     fontSize: 12,
-    fontWeight: '500',
     lineHeight: 16,
-    letterSpacing: 0.48,
   },
   labelSm: {
-    fontFamily: MONO_FONT,
+    fontFamily: fontFamily.medium,
     fontSize: 11,
-    fontWeight: '500',
     lineHeight: 14,
-    letterSpacing: 0.66,
+  },
+  kpiLg: {
+    fontFamily: fontFamily.bold,
+    fontSize: 28,
+    lineHeight: 34,
+    fontVariant: ['tabular-nums'],
+  },
+  kpiMd: {
+    fontFamily: fontFamily.bold,
+    fontSize: 20,
+    lineHeight: 26,
+    fontVariant: ['tabular-nums'],
   },
 };

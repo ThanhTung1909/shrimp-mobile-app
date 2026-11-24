@@ -1,6 +1,7 @@
 import { apiClient, unwrapApiResponse } from './apiClient';
 
 export enum Role {
+  ADMIN = 'ADMIN',
   MANAGER = 'MANAGER',
   FARMER = 'FARMER',
 }
@@ -10,6 +11,8 @@ export enum Gender {
   FEMALE = 'FEMALE',
   OTHER = 'OTHER',
 }
+
+export type OtpPurpose = 'REGISTER' | 'RESET_PASSWORD' | 'CHANGE_PASSWORD';
 
 export interface LoginDto {
   phoneNumber: string;
@@ -29,24 +32,52 @@ export interface LoginResponse {
 
 export interface SendOtpDto {
   phoneNumber: string;
+  purpose: OtpPurpose;
 }
 
 export interface SendOtpResponse {
   message: string;
   phoneNumber: string;
   otp?: string;
-  expiresIn: string;
+  expiresIn?: string;
 }
 
 export interface VerifyOtpDto {
-  phoneNumber: string;
+  phoneNumber?: string;
+  email?: string;
   otp: string;
+  purpose: OtpPurpose;
 }
 
 export interface VerifyOtpResponse {
   message: string;
-  phoneNumber: string;
+  phoneNumber?: string;
+  email?: string;
   isValid: boolean;
+}
+
+export interface ForgotPasswordDto {
+  phoneNumber?: string;
+  email?: string;
+}
+
+export interface ForgotPasswordResponse {
+  message: string;
+  otp?: string;
+  expiresIn?: string;
+}
+
+export interface ResetPasswordDto {
+  phoneNumber?: string;
+  email?: string;
+  newPassword: string;
+}
+
+export interface RegisterDto {
+  fullName: string;
+  phoneNumber: string;
+  email: string;
+  role: Role;
 }
 
 export interface UserMeResponse {
@@ -65,6 +96,8 @@ export interface UserMeResponse {
 export interface ChangePasswordDto {
   currentPassword: string;
   newPassword: string;
+  otp: string;
+  refreshToken?: string;
 }
 
 export interface ChangePasswordResponse {
@@ -74,6 +107,16 @@ export interface ChangePasswordResponse {
   mustChangePassword: boolean;
   accessToken: string;
   refreshToken: string;
+}
+
+// RecoveryIdentifierDto rejects requests containing both phoneNumber and email
+function buildIdentifierBody(dto: { phoneNumber?: string; email?: string }) {
+  const email = dto.email?.trim();
+  const phoneNumber = dto.phoneNumber?.trim();
+  if (email && !phoneNumber) {
+    return { email };
+  }
+  return { phoneNumber: phoneNumber || '' };
 }
 
 export const authApi = {
@@ -114,8 +157,33 @@ export const authApi = {
   },
 
   verifyOtp: async (dto: VerifyOtpDto): Promise<VerifyOtpResponse> => {
-    const response = await apiClient.post<any>('/auth/verify-otp', dto);
+    const body = {
+      ...buildIdentifierBody(dto),
+      otp: dto.otp,
+      purpose: dto.purpose,
+    };
+    const response = await apiClient.post<any>('/auth/verify-otp', body);
     return unwrapApiResponse<VerifyOtpResponse>(response.data);
+  },
+
+  forgotPassword: async (dto: ForgotPasswordDto): Promise<ForgotPasswordResponse> => {
+    const body = buildIdentifierBody(dto);
+    const response = await apiClient.post<any>('/auth/forgot-password', body);
+    return unwrapApiResponse<ForgotPasswordResponse>(response.data);
+  },
+
+  resetPassword: async (dto: ResetPasswordDto): Promise<{ message: string }> => {
+    const body = {
+      ...buildIdentifierBody(dto),
+      newPassword: dto.newPassword,
+    };
+    const response = await apiClient.post<any>('/auth/reset-password', body);
+    return unwrapApiResponse<{ message: string }>(response.data);
+  },
+
+  register: async (dto: RegisterDto): Promise<any> => {
+    const response = await apiClient.post<any>('/auth/register', dto);
+    return unwrapApiResponse<any>(response.data);
   },
 
   getMe: async (): Promise<UserMeResponse> => {

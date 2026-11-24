@@ -4,32 +4,36 @@ import Constants from 'expo-constants';
 import { getAccessToken, getRefreshToken, saveTokens, clearTokens } from '../utils/secureStore';
 
 // Tự động phát hiện IP máy tính chạy Backend khi dùng thiết bị thật hoặc máy ảo
-const getAutoDetectedHostIp = (): string => {
+const getDefaultBaseUrl = (): string => {
+  const envUrl = process.env.EXPO_PUBLIC_API_URL?.trim();
+  if (envUrl) {
+    return envUrl.replace(/\/+$/, '');
+  }
+
   const hostUri =
     Constants.expoConfig?.hostUri ||
-    (Constants as any).manifest2?.extra?.expoGo?.developer?.tool ||
+    (Constants as any).manifest2?.extra?.expoGo?.debuggerHost ||
     (Constants as any).manifest?.debuggerHost;
 
   if (hostUri) {
     const ip = hostUri.split(':')[0];
     if (ip && ip !== 'localhost' && ip !== '127.0.0.1') {
-      return ip;
+      return `http://${ip}:3000`;
     }
   }
 
-  // Android Emulator mặc định dùng 10.0.2.2
   if (Platform.OS === 'android') {
-    return '10.0.2.2';
+    return 'http://10.0.2.2:3000';
   }
 
-  // iOS Simulator mặc định dùng localhost
-  return 'localhost';
+  return 'http://localhost:3000';
 };
 
-const hostIp = getAutoDetectedHostIp();
-export const DEFAULT_BASE_URL = `http://${hostIp}:3000`;
+export const DEFAULT_BASE_URL = getDefaultBaseUrl();
 
-console.log(`📡 [PondLogs Mobile] API Base URL: ${DEFAULT_BASE_URL}`);
+if (__DEV__) {
+  console.log(`📡 [AquaSense Mobile] API Base URL: ${DEFAULT_BASE_URL}`);
+}
 
 export const apiClient = axios.create({
   baseURL: DEFAULT_BASE_URL,
@@ -46,12 +50,11 @@ export function unwrapApiResponse<T>(responseData: any): T {
 
   let curr = responseData;
   while (curr !== null && curr !== undefined && typeof curr === 'object') {
-    // Trường hợp Paginated response có chứa data dạng mảng và metadata phân trang
+    // Paginated response with array data and pagination metadata
     if ('data' in curr && Array.isArray(curr.data) && ('total' in curr || 'totalPages' in curr)) {
       return curr as T;
     }
 
-    // Nếu object có property 'data' là object hoặc mảng, unwrap 1 tầng
     if ('data' in curr && curr.data !== undefined && curr.data !== null && typeof curr.data === 'object') {
       curr = curr.data;
     } else {
@@ -80,7 +83,6 @@ const processQueue = (error: AxiosError | null, token: string | null = null) => 
   failedQueue = [];
 };
 
-// Callback lắng nghe sự kiện đăng xuất khi refresh token hết hạn
 let onUnauthenticatedCallback: (() => void) | null = null;
 
 export const setOnUnauthenticated = (callback: () => void) => {
@@ -100,6 +102,16 @@ apiClient.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
+const PUBLIC_AUTH_PATHS = [
+  '/auth/login',
+  '/auth/refresh',
+  '/auth/send-otp',
+  '/auth/verify-otp',
+  '/auth/forgot-password',
+  '/auth/reset-password',
+  '/auth/register',
+];
+
 // Response Interceptor: Tự động Refresh Token khi nhận lỗi 401
 apiClient.interceptors.response.use(
   (response) => response,
@@ -107,13 +119,8 @@ apiClient.interceptors.response.use(
     const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
 
     if (error.response?.status === 401 && originalRequest && !originalRequest._retry) {
-      // Bỏ qua các endpoint auth công khai hoặc endpoint refresh chính nó để tránh lặp vô tận
-      if (
-        originalRequest.url?.includes('/auth/login') ||
-        originalRequest.url?.includes('/auth/refresh') ||
-        originalRequest.url?.includes('/auth/send-otp') ||
-        originalRequest.url?.includes('/auth/verify-otp')
-      ) {
+      const reqUrl = originalRequest.url || '';
+      if (PUBLIC_AUTH_PATHS.some((path) => reqUrl.includes(path))) {
         return Promise.reject(error);
       }
 
@@ -140,13 +147,20 @@ apiClient.interceptors.response.use(
           throw new Error('No refresh token available');
         }
 
-        // Gọi trực tiếp axios để tránh trigger interceptor của apiClient
-        const refreshResponse = await axios.post<{ accessToken: string; refreshToken: string }>(
+        const refreshResponse = await axios.post<any>(
           `${apiClient.defaults.baseURL}/auth/refresh`,
           { refreshToken }
         );
 
-        const { accessToken: newAccessToken, refreshToken: newRefreshToken } = refreshResponse.data;
+        const refreshPayload = unwrapApiResponse<{ accessToken: string; refreshToken: string }>(
+          refreshResponse.data
+        );
+        const newAccessToken = refreshPayload?.accessToken;
+        const newRefreshToken = refreshPayload?.refreshToken;
+
+        if (!newAccessToken) {
+          throw new Error('Refresh response missing accessToken');
+        }
 
         await saveTokens(newAccessToken, newRefreshToken);
 

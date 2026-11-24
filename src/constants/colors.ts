@@ -1,62 +1,68 @@
 export const colors = {
-  // Canvas & Surfaces
-  surface: '#FAF8FF',
-  surfaceDim: '#D2D9F4',
-  surfaceBright: '#FAF8FF',
-  surfaceContainerLowest: '#FFFFFF',
-  surfaceContainerLow: '#F2F3FF',
-  surfaceContainer: '#EAEDFF',
-  surfaceContainerHigh: '#E2E7FF',
-  surfaceContainerHighest: '#DAE2FD',
-  surfaceVariant: '#DAE2FD',
+  // AquaSense Natural Daylight — Core Palette
+  canvas: '#F5F8F7',
+  card: '#FFFFFF',
+  border: '#DDE7E6',
+  borderStrong: '#B8CBC9',
 
-  // Typography & Borders
-  onSurface: '#131B2E',
-  onSurfaceVariant: '#43474E',
-  inverseSurface: '#283044',
-  inverseOnSurface: '#EEF0FF',
-  outline: '#74777F',
-  outlineVariant: '#C4C6CF',
-  surfaceTint: '#485F82',
-
-  // Primary (Deep Industrial Navy)
-  primary: '#00152F',
+  // Brand Teal
+  primary: '#0B6E75',
+  primaryDark: '#004F54',
+  primaryLight: '#E6F4F5',
+  primarySoft: '#E6F4F5',
   onPrimary: '#FFFFFF',
-  primaryContainer: '#0F2A4A',
-  onPrimaryContainer: '#7A92B7',
-  inversePrimary: '#B0C8F0',
-  primaryFixed: '#D4E3FF',
-  primaryFixedDim: '#B0C8F0',
-  onPrimaryFixed: '#001C3A',
-  onPrimaryFixedVariant: '#304869',
-
-  // Secondary (Aeration Cyan / Aquatic Teal)
-  secondary: '#006A61',
+  secondary: '#0B6E75',
   onSecondary: '#FFFFFF',
-  secondaryContainer: '#86F2E4',
-  onSecondaryContainer: '#006F66',
-  secondaryFixed: '#89F5E7',
-  secondaryFixedDim: '#6BD8CB',
-  onSecondaryFixed: '#00201D',
-  onSecondaryFixedVariant: '#005049',
+  secondaryContainer: '#E6F4F5',
+  onSecondaryContainer: '#004F54',
 
-  // Tertiary / Warning (Industrial Amber / Orange)
-  tertiary: '#290D00',
-  onTertiary: '#FFFFFF',
-  tertiaryContainer: '#491C00',
-  onTertiaryContainer: '#DF732D',
-  tertiaryFixed: '#FFDBCA',
-  tertiaryFixedDim: '#FFB68E',
-  onTertiaryFixed: '#331200',
-  onTertiaryFixedVariant: '#763300',
+  // Typography Ink
+  ink: '#112226',
+  muted: '#4B6368',
+  subtle: '#70878C',
+  onSurface: '#112226',
+  onSurfaceVariant: '#4B6368',
 
-  // Error / Alarm
-  error: '#BA1A1A',
+  // Calm Monitoring Option 1 — Semantic Surfaces & Dots
+  safeBg: '#F4FBF7',
+  safeBorder: '#B7E4C7',
+  safeDot: '#15803D',
+  safeText: '#15803D',
+  success: '#15803D',
+
+  warnBg: '#FFFBEB',
+  warnBorder: '#F59E0B',
+  warnDot: '#D97706',
+  warnText: '#B45309',
+  warning: '#D97706',
+
+  dangerBg: '#FFF5F5',
+  dangerBorder: '#F87171',
+  dangerDot: '#C81E1E',
+  dangerText: '#C81E1E',
+  error: '#C81E1E',
   onError: '#FFFFFF',
-  errorContainer: '#FFDAD6',
-  onErrorContainer: '#93000A',
+  errorContainer: '#FEE2E2',
+  onErrorContainer: '#991B1B',
 
-  // Background
-  background: '#FAF8FF',
-  onBackground: '#131B2E',
+  offlineBg: '#F1F5F9',
+  offlineBorder: '#CBD5E1',
+  offlineDot: '#64748B',
+  offlineText: '#475569',
+
+  // Surfaces & Overlays
+  surface: '#F5F8F7',
+  surfaceBright: '#FFFFFF',
+  surfaceContainerLowest: '#FFFFFF',
+  surfaceContainerLow: '#F5F8F7',
+  surfaceContainer: '#EDF3F2',
+  surfaceContainerHigh: '#E3ECEB',
+  surfaceContainerHighest: '#D9E5E3',
+  outline: '#B8CBC9',
+  outlineVariant: '#DDE7E6',
+  background: '#F5F8F7',
+  onBackground: '#112226',
+  overlay: 'rgba(17, 34, 38, 0.52)',
 };
+
+export type ColorScheme = typeof colors;
