@@ -65,6 +65,32 @@ export function unwrapApiResponse<T>(responseData: any): T {
   return curr as T;
 }
 
+/** Unwrap a refresh response and ensure both access and refresh tokens are non-empty strings. */
+export function extractRefreshTokens(responseData: unknown): {
+  accessToken: string;
+  refreshToken: string;
+} {
+  const refreshPayload = unwrapApiResponse<{ accessToken?: string; refreshToken?: string }>(
+    responseData
+  );
+  const newAccessToken = refreshPayload?.accessToken;
+  const newRefreshToken = refreshPayload?.refreshToken;
+
+  if (
+    typeof newAccessToken !== 'string' ||
+    !newAccessToken.trim() ||
+    typeof newRefreshToken !== 'string' ||
+    !newRefreshToken.trim()
+  ) {
+    throw new Error('Refresh response missing accessToken or refreshToken');
+  }
+
+  return {
+    accessToken: newAccessToken,
+    refreshToken: newRefreshToken,
+  };
+}
+
 let isRefreshing = false;
 let failedQueue: Array<{
   resolve: (value?: unknown) => void;
@@ -152,15 +178,8 @@ apiClient.interceptors.response.use(
           { refreshToken }
         );
 
-        const refreshPayload = unwrapApiResponse<{ accessToken: string; refreshToken: string }>(
-          refreshResponse.data
-        );
-        const newAccessToken = refreshPayload?.accessToken;
-        const newRefreshToken = refreshPayload?.refreshToken;
-
-        if (!newAccessToken) {
-          throw new Error('Refresh response missing accessToken');
-        }
+        const { accessToken: newAccessToken, refreshToken: newRefreshToken } =
+          extractRefreshTokens(refreshResponse.data);
 
         await saveTokens(newAccessToken, newRefreshToken);
 
