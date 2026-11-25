@@ -12,7 +12,7 @@ export enum Gender {
   OTHER = 'OTHER',
 }
 
-export type OtpPurpose = 'REGISTER' | 'RESET_PASSWORD' | 'CHANGE_PASSWORD';
+export type OtpPurpose = 'REGISTER' | 'RESET_PASSWORD' | 'CHANGE_PASSWORD' | 'LOGIN';
 
 export interface LoginDto {
   phoneNumber: string;
@@ -32,7 +32,7 @@ export interface LoginResponse {
 
 export interface SendOtpDto {
   phoneNumber: string;
-  purpose: OtpPurpose;
+  purpose?: OtpPurpose;
 }
 
 export interface SendOtpResponse {
@@ -46,7 +46,7 @@ export interface VerifyOtpDto {
   phoneNumber?: string;
   email?: string;
   otp: string;
-  purpose: OtpPurpose;
+  purpose?: OtpPurpose;
 }
 
 export interface VerifyOtpResponse {
@@ -123,7 +123,7 @@ export const authApi = {
   login: async (dto: LoginDto): Promise<LoginResponse> => {
     const response = await apiClient.post<any>('/auth/login', dto);
     const payload = response.data;
-    const targetObj = payload?.data && typeof payload.data === 'object' ? payload.data : payload;
+    const targetObj = unwrapApiResponse<Record<string, any>>(payload) ?? {};
 
     const accessToken =
       targetObj?.accessToken ||
@@ -152,7 +152,11 @@ export const authApi = {
   },
 
   sendOtp: async (dto: SendOtpDto): Promise<SendOtpResponse> => {
-    const response = await apiClient.post<any>('/auth/send-otp', dto);
+    const body = {
+      ...dto,
+      purpose: dto.purpose ?? 'LOGIN',
+    };
+    const response = await apiClient.post<any>('/auth/send-otp', body);
     return unwrapApiResponse<SendOtpResponse>(response.data);
   },
 
@@ -160,7 +164,7 @@ export const authApi = {
     const body = {
       ...buildIdentifierBody(dto),
       otp: dto.otp,
-      purpose: dto.purpose,
+      purpose: dto.purpose ?? 'LOGIN',
     };
     const response = await apiClient.post<any>('/auth/verify-otp', body);
     return unwrapApiResponse<VerifyOtpResponse>(response.data);

@@ -1,6 +1,6 @@
 import { io, Socket } from 'socket.io-client';
 import axios from 'axios';
-import { DEFAULT_BASE_URL, unwrapApiResponse } from './apiClient';
+import { DEFAULT_BASE_URL, extractRefreshTokens } from './apiClient';
 import { getAccessToken, getRefreshToken, saveTokens } from '../utils/secureStore';
 import type { AppDispatch, RootState } from '../store';
 import { updateRealtimeTelemetry } from '../store/slices/pondSlice';
@@ -167,14 +167,8 @@ class SocketService {
           { refreshToken }
         );
 
-        const refreshPayload = unwrapApiResponse<{ accessToken: string; refreshToken: string }>(
-          refreshResponse.data
-        );
-        const newAccessToken = refreshPayload?.accessToken;
-        const newRefreshToken = refreshPayload?.refreshToken;
-        if (!newAccessToken) {
-          throw new Error('Missing access token in refresh response');
-        }
+        const { accessToken: newAccessToken, refreshToken: newRefreshToken } =
+          extractRefreshTokens(refreshResponse.data);
 
         await saveTokens(newAccessToken, newRefreshToken);
 
