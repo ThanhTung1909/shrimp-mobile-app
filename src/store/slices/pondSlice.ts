@@ -89,11 +89,16 @@ function findThresholdRange(
   };
 }
 
-export function parseOptionalNumber(...vals: any[]): number | null {
+export function parseOptionalNumber(...vals: unknown[]): number | null {
   for (const raw of vals) {
     if (raw === null || raw === undefined || raw === '') continue;
-    const num = typeof raw === 'number' ? raw : parseFloat(String(raw));
-    if (!isNaN(num)) return Math.round(num * 100) / 100;
+    const num =
+      typeof raw === 'number'
+        ? raw
+        : typeof raw === 'string'
+        ? parseFloat(raw)
+        : Number.NaN;
+    if (Number.isFinite(num)) return Math.round(num * 100) / 100;
   }
   return null;
 }
