@@ -78,7 +78,7 @@ function findThresholdRange(
   keys: string[],
   fallback: { min: number; max: number }
 ): { min: number; max: number } {
-  if (!thresholds || thresholds.length === 0) return fallback;
+  if (!Array.isArray(thresholds) || thresholds.length === 0) return fallback;
   const found = thresholds.find((t) =>
     keys.some((k) => t.metricName?.toLowerCase() === k.toLowerCase())
   );
@@ -89,7 +89,7 @@ function findThresholdRange(
   };
 }
 
-function parseOptionalNumber(...vals: any[]): number | null {
+export function parseOptionalNumber(...vals: any[]): number | null {
   for (const raw of vals) {
     if (raw === null || raw === undefined || raw === '') continue;
     const num = typeof raw === 'number' ? raw : parseFloat(String(raw));
@@ -341,41 +341,52 @@ const initialState: PondState = {
   error: null,
 };
 
+async function fetchPondResources(pondId: string, deviceId?: string) {
+  const [telemetry, rawThresholds, rawCrops] = await Promise.all([
+    deviceId
+      ? telemetryApi.getLatestTelemetry(deviceId).catch(() => null)
+      : Promise.resolve(null),
+    thresholdApi.getPondThresholds(pondId).catch(() => []),
+    cropApi.getPondCrops(pondId).catch(() => []),
+  ]);
+
+  const thresholds = Array.isArray(rawThresholds) ? rawThresholds : [];
+  const crops = Array.isArray(rawCrops) ? rawCrops : [];
+  const activeCrop = crops.find((c) => c.status === 'ACTIVE') || crops[0] || null;
+
+  return { telemetry, thresholds, activeCrop };
+}
+
 export const fetchPonds = createAsyncThunk(
   'pond/fetchPonds',
   async (_, { rejectWithValue }) => {
     try {
       const [pondsRes, farms] = await Promise.all([pondApi.getPonds(), farmApi.getFarms()]);
-      const rawPonds = pondsRes.data || [];
+      const rawPonds = Array.isArray(pondsRes?.data) ? pondsRes.data : [];
 
       const telemetryMap: Record<string, TelemetryDataBackend> = {};
       const thresholdsMap: Record<string, ThresholdConfigBackend[]> = {};
       const activeCropsMap: Record<string, ShrimpBatchBackend | null> = {};
 
-      await Promise.all(
+      await Promise.allSettled(
         rawPonds.map(async (pond) => {
           const primaryDevice = pickPrimaryDevice(pond.devices);
           const deviceId = primaryDevice?.deviceId;
-
-          const [telemetry, thresholds, crops] = await Promise.all([
+          const { telemetry, thresholds, activeCrop } = await fetchPondResources(
+            pond.pondId,
             deviceId
-              ? telemetryApi.getLatestTelemetry(deviceId).catch(() => null)
-              : Promise.resolve(null),
-            thresholdApi.getPondThresholds(pond.pondId).catch(() => []),
-            cropApi.getPondCrops(pond.pondId).catch(() => []),
-          ]);
+          );
 
           if (telemetry) {
             telemetryMap[pond.pondId] = telemetry;
             if (deviceId) telemetryMap[deviceId] = telemetry;
           }
           thresholdsMap[pond.pondId] = thresholds;
-          const activeCrop = crops.find((c) => c.status === 'ACTIVE') || crops[0] || null;
           activeCropsMap[pond.pondId] = activeCrop;
         })
       );
 
-      return { rawPonds, farms, telemetryMap, thresholdsMap, activeCropsMap };
+      return { rawPonds, farms: Array.isArray(farms) ? farms : [], telemetryMap, thresholdsMap, activeCropsMap };
     } catch (err: any) {
       return rejectWithValue(err.response?.data?.message || 'Không thể tải danh sách ao nuôi');
     }
@@ -392,12 +403,7 @@ export const fetchPondDetail = createAsyncThunk(
       }
       const primaryDevice = pickPrimaryDevice(pond.devices);
       const deviceId = primaryDevice?.deviceId;
-      const [telemetry, thresholds, crops] = await Promise.all([
-        deviceId ? telemetryApi.getLatestTelemetry(deviceId).catch(() => null) : Promise.resolve(null),
-        thresholdApi.getPondThresholds(pondId).catch(() => []),
-        cropApi.getPondCrops(pondId).catch(() => []),
-      ]);
-      const activeCrop = crops.find((c) => c.status === 'ACTIVE') || crops[0] || null;
+      const { telemetry, thresholds, activeCrop } = await fetchPondResources(pondId, deviceId);
       return { pond, telemetry, thresholds, activeCrop };
     } catch (err: any) {
       return rejectWithValue(err.response?.data?.message || 'Không thể tải chi tiết ao nuôi');
