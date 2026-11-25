@@ -42,16 +42,25 @@ export interface TelemetryHistoryApiResponse {
 }
 
 function buildPaginatedHistory(
-  source: Record<string, any>,
+  source: Record<string, unknown>,
   defaultPage: number,
   defaultLimit: number
 ): TelemetryHistoryApiResponse {
-  const records: TelemetryDataBackend[] = source.data;
+  const records = Array.isArray(source.data) ? (source.data as TelemetryDataBackend[]) : [];
   return {
     success: true,
-    total: typeof source.total === 'number' ? source.total : records.length,
-    page: typeof source.page === 'number' ? source.page : defaultPage,
-    limit: typeof source.limit === 'number' ? source.limit : defaultLimit,
+    total:
+      typeof source.total === 'number' && Number.isFinite(source.total)
+        ? source.total
+        : records.length,
+    page:
+      typeof source.page === 'number' && Number.isFinite(source.page)
+        ? source.page
+        : defaultPage,
+    limit:
+      typeof source.limit === 'number' && Number.isFinite(source.limit)
+        ? source.limit
+        : defaultLimit,
     data: records,
   };
 }
@@ -74,7 +83,7 @@ export function normalizeTelemetryHistoryResponse(
     };
   }
 
-  const unwrapped = unwrapApiResponse<any>(raw);
+  const unwrapped = unwrapApiResponse<unknown>(raw);
 
   if (Array.isArray(unwrapped)) {
     return {
@@ -82,16 +91,17 @@ export function normalizeTelemetryHistoryResponse(
       total: unwrapped.length,
       page: defaultPage,
       limit: defaultLimit,
-      data: unwrapped,
+      data: unwrapped as TelemetryDataBackend[],
     };
   }
 
-  if (unwrapped && typeof unwrapped === 'object' && Array.isArray(unwrapped.data)) {
-    return buildPaginatedHistory(unwrapped, defaultPage, defaultLimit);
-  }
-
-  if (Array.isArray((raw as Record<string, any>).data)) {
-    return buildPaginatedHistory(raw as Record<string, any>, defaultPage, defaultLimit);
+  if (
+    unwrapped !== null &&
+    typeof unwrapped === 'object' &&
+    'data' in unwrapped &&
+    Array.isArray((unwrapped as Record<string, unknown>).data)
+  ) {
+    return buildPaginatedHistory(unwrapped as Record<string, unknown>, defaultPage, defaultLimit);
   }
 
   return {
